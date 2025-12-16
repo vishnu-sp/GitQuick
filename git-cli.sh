@@ -69,23 +69,56 @@ init_gq() {
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
     
-    # Detect shell
+    # Ask user to select shell config file
     local shell_config=""
     local shell_name=""
+    local detected_shell=""
+    
+    # Detect current shell for suggestion
     if [ -n "$ZSH_VERSION" ]; then
-        shell_config="$HOME/.zshrc"
-        shell_name="zsh"
+        detected_shell="zsh"
     elif [ -n "$BASH_VERSION" ]; then
-        shell_config="$HOME/.bashrc"
-        shell_name="bash"
-    else
-        echo -e "${YELLOW}Warning: Could not detect shell. Defaulting to ~/.zshrc${NC}"
-        shell_config="$HOME/.zshrc"
-        shell_name="zsh"
+        detected_shell="bash"
     fi
     
-    echo -e "${BLUE}Detected shell: ${GREEN}${shell_name}${NC}"
-    echo -e "${BLUE}Config file: ${GREEN}${shell_config}${NC}"
+    echo -e "${BLUE}Select shell configuration file:${NC}"
+    echo ""
+    if [ "$detected_shell" = "zsh" ]; then
+        echo -e "  1. ${GREEN}~/.zshrc${NC} (recommended - detected zsh)"
+    else
+        echo -e "  1. ~/.zshrc"
+    fi
+    
+    if [ "$detected_shell" = "bash" ]; then
+        echo -e "  2. ${GREEN}~/.bashrc${NC} (recommended - detected bash)"
+    else
+        echo -e "  2. ~/.bashrc"
+    fi
+    
+    echo ""
+    read -p "Choice (1-2) [default: 1]: " shell_choice
+    
+    # Default to option 1 if empty
+    shell_choice="${shell_choice:-1}"
+    
+    case "$shell_choice" in
+        1)
+            shell_config="$HOME/.zshrc"
+            shell_name="zsh"
+            ;;
+        2)
+            shell_config="$HOME/.bashrc"
+            shell_name="bash"
+            ;;
+        *)
+            echo -e "${YELLOW}Invalid choice, defaulting to ~/.zshrc${NC}"
+            shell_config="$HOME/.zshrc"
+            shell_name="zsh"
+            ;;
+    esac
+    
+    echo ""
+    echo -e "${BLUE}Selected config file: ${GREEN}${shell_config}${NC}"
     echo ""
     
     # Use the global SCRIPT_DIR (already detected at script load)
@@ -144,6 +177,63 @@ EOF
         echo ""
         echo -e "${YELLOW}⚠️  Please run: ${GREEN}source ${shell_config}${NC} to reload your shell"
         echo ""
+    fi
+    
+    # Ask about Cursor AI installation
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${GREEN}AI Provider Setup${NC}"
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    
+    # Check if cursor-agent is already installed
+    if command -v cursor-agent &> /dev/null; then
+        echo -e "${GREEN}✓ cursor-agent is already installed${NC}"
+        cursor-agent --version 2>/dev/null || true
+        echo ""
+    else
+        echo -e "${BLUE}Do you want to use Cursor AI for commit messages?${NC}"
+        echo ""
+        echo -e "  ${GREEN}Benefits:${NC}"
+        echo -e "    • Uses your Cursor subscription credits (Free tier available)"
+        echo -e "    • No separate API key needed"
+        echo -e "    • Seamless integration if you use Cursor IDE"
+        echo ""
+        echo -e "  ${YELLOW}Alternatives:${NC}"
+        echo -e "    • OpenAI (requires API key)"
+        echo -e "    • Anthropic Claude (requires API key)"
+        echo ""
+        read -p "Install cursor-agent? (Y/n): " install_cursor
+        
+        # Default to yes if empty
+        install_cursor="${install_cursor:-y}"
+        install_cursor=$(echo "$install_cursor" | tr '[:upper:]' '[:lower:]' | xargs)
+        
+        if [[ "$install_cursor" == "y" ]] || [[ "$install_cursor" == "yes" ]]; then
+            echo ""
+            echo -e "${BLUE}🎨 Installing Cursor CLI...${NC}"
+            
+            if [ -f "$script_dir/install-cursor-cli.sh" ]; then
+                bash "$script_dir/install-cursor-cli.sh"
+            else
+                # Fallback: direct installation
+                echo "Downloading and installing Cursor CLI..."
+                curl https://cursor.com/install -fsS | bash
+                
+                # Check if installation was successful
+                if command -v cursor-agent &> /dev/null; then
+                    echo ""
+                    echo -e "${GREEN}✅ Cursor CLI installed successfully!${NC}"
+                else
+                    echo ""
+                    echo -e "${YELLOW}⚠️  Installation may have completed, but cursor-agent not found in PATH${NC}"
+                    echo -e "${YELLOW}You may need to add Cursor CLI to your PATH manually${NC}"
+                fi
+            fi
+            echo ""
+        else
+            echo -e "${BLUE}Skipping cursor-agent installation${NC}"
+            echo ""
+        fi
     fi
     
     # Configure credentials

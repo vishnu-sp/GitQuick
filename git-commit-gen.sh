@@ -442,6 +442,43 @@ select_ticket_interactive() {
     return 1
 }
 
+# Load AI provider credentials from secure storage
+load_ai_credentials() {
+    # Try to load from macOS Keychain first
+    if [ -z "$CURSOR_API_KEY" ]; then
+        CURSOR_API_KEY=$(security find-generic-password -a "$USER" -s "CURSOR_API_KEY" -w 2>/dev/null)
+    fi
+    
+    if [ -z "$OPENAI_API_KEY" ]; then
+        OPENAI_API_KEY=$(security find-generic-password -a "$USER" -s "OPENAI_API_KEY" -w 2>/dev/null)
+    fi
+    
+    if [ -z "$ANTHROPIC_API_KEY" ]; then
+        ANTHROPIC_API_KEY=$(security find-generic-password -a "$USER" -s "ANTHROPIC_API_KEY" -w 2>/dev/null)
+    fi
+    
+    # Try to load from SOPS encrypted file if Keychain fails
+    if [ -f "$HOME/Documents/secrets/api-keys.yaml" ] && command -v sops &> /dev/null; then
+        if [ -z "$CURSOR_API_KEY" ]; then
+            CURSOR_API_KEY=$(sops --decrypt --extract '["CURSOR_API_KEY"]' "$HOME/Documents/secrets/api-keys.yaml" 2>/dev/null)
+        fi
+        if [ -z "$OPENAI_API_KEY" ]; then
+            OPENAI_API_KEY=$(sops --decrypt --extract '["OPENAI_API_KEY"]' "$HOME/Documents/secrets/api-keys.yaml" 2>/dev/null)
+        fi
+        if [ -z "$ANTHROPIC_API_KEY" ]; then
+            ANTHROPIC_API_KEY=$(sops --decrypt --extract '["ANTHROPIC_API_KEY"]' "$HOME/Documents/secrets/api-keys.yaml" 2>/dev/null)
+        fi
+    fi
+    
+    # Try to load from env file if both Keychain and SOPS fail
+    if [ -f "$HOME/.env.api-keys" ]; then
+        # Source the file to load any keys not already set
+        if [ -z "$CURSOR_API_KEY" ] || [ -z "$OPENAI_API_KEY" ] || [ -z "$ANTHROPIC_API_KEY" ]; then
+            source "$HOME/.env.api-keys" 2>/dev/null
+        fi
+    fi
+}
+
 # Load Jira credentials from secure storage
 load_jira_credentials() {
     # Try to load from macOS Keychain first
@@ -1796,6 +1833,9 @@ update_jira_after_commit() {
 # HANDLE PUSH-ONLY MODE (for gq push command)
 # ============================================================================
 if [ "$PUSH_ONLY" = "true" ]; then
+    # Load AI provider credentials from secure storage
+    load_ai_credentials
+    
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "${BLUE}📤 Push Only Mode${NC}"
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -1816,6 +1856,9 @@ fi
 # ============================================================================
 # NORMAL COMMIT FLOW
 # ============================================================================
+
+# Load AI provider credentials from secure storage
+load_ai_credentials
 
 # Sync before committing
 sync_with_remote
@@ -1908,6 +1951,12 @@ $diff_truncated
 
 Generate only the commit message, nothing else:"
 
+    # Escape prompt for JSON
+    local prompt_json=$(echo "$prompt" | jq -Rs . 2>/dev/null)
+    if [ $? -ne 0 ] || [ -z "$prompt_json" ]; then
+        return 1
+    fi
+    
     local response=$(curl -s https://api.openai.com/v1/chat/completions \
         -H "Content-Type: application/json" \
         -H "Authorization: Bearer $api_key" \
@@ -1915,14 +1964,28 @@ Generate only the commit message, nothing else:"
             \"model\": \"$model\",
             \"messages\": [
                 {\"role\": \"system\", \"content\": \"You are a git commit message generator. Generate concise, conventional commit messages.\"},
-                {\"role\": \"user\", \"content\": \"$prompt\"}
+                {\"role\": \"user\", \"content\": $prompt_json}
             ],
             \"temperature\": 0.3,
             \"max_tokens\": 100
         }" 2>/dev/null)
     
-    if [ $? -eq 0 ] && [ ! -z "$response" ]; then
-        echo "$response" | grep -o '"content":"[^"]*"' | head -1 | sed 's/"content":"\(.*\)"/\1/' | sed 's/\\n/\n/g' | head -1
+    if [ $? -ne 0 ] || [ -z "$response" ]; then
+        return 1
+    fi
+    
+    # Check for API errors
+    if echo "$response" | jq -e '.error' &>/dev/null; then
+        local error_msg=$(echo "$response" | jq -r '.error.message' 2>/dev/null)
+        echo -e "${YELLOW}⚠️  OpenAI API error: ${error_msg}${NC}" >&2
+        return 1
+    fi
+    
+    # Extract commit message using jq
+    local message=$(echo "$response" | jq -r '.choices[0].message.content' 2>/dev/null)
+    
+    if [ ! -z "$message" ] && [ "$message" != "null" ] && [ ${#message} -gt 5 ]; then
+        echo "$message" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | head -1
         return 0
     fi
     
@@ -1952,6 +2015,12 @@ $diff_truncated
 
 Generate only the commit message:"
 
+    # Escape prompt for JSON
+    local prompt_json=$(echo "$prompt" | jq -Rs . 2>/dev/null)
+    if [ $? -ne 0 ] || [ -z "$prompt_json" ]; then
+        return 1
+    fi
+    
     local response=$(curl -s https://api.anthropic.com/v1/messages \
         -H "Content-Type: application/json" \
         -H "x-api-key: $api_key" \
@@ -1960,12 +2029,26 @@ Generate only the commit message:"
             \"model\": \"claude-3-5-sonnet-20241022\",
             \"max_tokens\": 100,
             \"messages\": [
-                {\"role\": \"user\", \"content\": \"$prompt\"}
+                {\"role\": \"user\", \"content\": $prompt_json}
             ]
         }" 2>/dev/null)
     
-    if [ $? -eq 0 ] && [ ! -z "$response" ]; then
-        echo "$response" | grep -o '"text":"[^"]*"' | head -1 | sed 's/"text":"\(.*\)"/\1/' | sed 's/\\n/\n/g' | head -1
+    if [ $? -ne 0 ] || [ -z "$response" ]; then
+        return 1
+    fi
+    
+    # Check for API errors
+    if echo "$response" | jq -e '.error' &>/dev/null; then
+        local error_msg=$(echo "$response" | jq -r '.error.message' 2>/dev/null)
+        echo -e "${YELLOW}⚠️  Anthropic API error: ${error_msg}${NC}" >&2
+        return 1
+    fi
+    
+    # Extract commit message using jq
+    local message=$(echo "$response" | jq -r '.content[0].text' 2>/dev/null)
+    
+    if [ ! -z "$message" ] && [ "$message" != "null" ] && [ ${#message} -gt 5 ]; then
+        echo "$message" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | head -1
         return 0
     fi
     
