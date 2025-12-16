@@ -1,0 +1,4 @@
+# Python dependencies for automation scripts
+
+# Required for generate-jira-comment.py
+requests>=2.31.0
