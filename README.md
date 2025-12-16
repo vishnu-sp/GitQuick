@@ -113,7 +113,7 @@ gq push     # Push + Update Jira
 
 ### Prerequisites
 
-- macOS (for Keychain support)
+- macOS (for Keychain support, optional)
 - Git installed
 - Bash or Zsh
 - `jq` - JSON processor: `brew install jq`
