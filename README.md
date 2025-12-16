@@ -8,7 +8,7 @@
 
 **Stop writing commit messages manually. Let AI handle Git workflows while you focus on coding.**
 
-[Quick Start](#installation) • [Features](#features) • [Documentation](#quick-start) • [Contributing](CONTRIBUTING.md)
+[Quick Start](#installation) • [Features](#features) • [Documentation](#quick-start) • [Contributing](.github/CONTRIBUTING.md)
 
 <img src="docs/demo.gif" alt="GitQuick Demo" width="600">
 
@@ -534,7 +534,7 @@ gq config
 
 ## Contributing
 
-We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+We welcome contributions! Please see [CONTRIBUTING.md](.github/CONTRIBUTING.md) for guidelines.
 
 **Ways to contribute:**
 
