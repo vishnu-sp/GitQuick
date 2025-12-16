@@ -175,7 +175,18 @@ EOF
         
         echo -e "${GREEN}✓ Added gq function to ${shell_config}${NC}"
         echo ""
-        echo -e "${YELLOW}⚠️  Please run: ${GREEN}source ${shell_config}${NC} to reload your shell"
+        
+        # Try to reload the shell config automatically
+        if [ -f "$shell_config" ]; then
+            echo -e "${BLUE}🔄 Reloading shell configuration...${NC}"
+            if source "$shell_config" 2>/dev/null; then
+                echo -e "${GREEN}✓ Shell configuration reloaded successfully${NC}"
+                echo -e "${GREEN}✓ You can now use 'gq' command immediately${NC}"
+            else
+                echo -e "${YELLOW}⚠️  Could not auto-reload (running in subshell)${NC}"
+                echo -e "${YELLOW}⚠️  Please run: ${GREEN}source ${shell_config}${NC} to reload your shell"
+            fi
+        fi
         echo ""
     fi
     
@@ -257,8 +268,29 @@ update_gq() {
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
     
+    # Detect shell config file
+    local shell_config=""
+    if [ -n "$ZSH_VERSION" ]; then
+        shell_config="$HOME/.zshrc"
+    elif [ -n "$BASH_VERSION" ]; then
+        shell_config="$HOME/.bashrc"
+    fi
+    
     if [ -f "$SCRIPT_DIR/store-api-keys.sh" ]; then
         bash "$SCRIPT_DIR/store-api-keys.sh"
+        
+        # Reload shell config to pick up any env file changes
+        if [ ! -z "$shell_config" ] && [ -f "$shell_config" ]; then
+            echo ""
+            echo -e "${BLUE}🔄 Reloading shell configuration...${NC}"
+            if source "$shell_config" 2>/dev/null; then
+                echo -e "${GREEN}✓ Shell configuration reloaded successfully${NC}"
+                echo -e "${GREEN}✓ Updated credentials are now available${NC}"
+            else
+                echo -e "${YELLOW}⚠️  Could not auto-reload (running in subshell)${NC}"
+                echo -e "${YELLOW}⚠️  Please run: ${GREEN}source ${shell_config}${NC} to reload your shell"
+            fi
+        fi
     else
         echo -e "${RED}Error: store-api-keys.sh not found${NC}" >&2
         return 1

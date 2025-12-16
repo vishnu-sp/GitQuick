@@ -35,14 +35,18 @@ else
 fi
 
 echo ""
-echo "Choose a storage method:"
+echo "What would you like to configure?"
 echo ""
-echo "1. macOS Keychain (Recommended - Most Secure)"
-echo "2. SOPS encrypted file (You already use SOPS)"
-echo "3. Environment file with restricted permissions"
-echo "4. Setup Jira Integration (for automatic ticket updates)"
-echo "5. Show current setup"
-read -p "Choice (1-5): " choice
+echo "1. Store AI Provider API Key (Cursor/OpenAI/Anthropic)"
+echo "   → Choose storage: macOS Keychain or Environment file"
+echo ""
+echo "2. Setup Jira Integration"
+echo "   → Configure Jira credentials for automatic ticket updates"
+echo ""
+echo "3. Show current setup"
+echo "   → View all configured API keys and credentials"
+echo ""
+read -p "Choice (1-3): " choice
 
 # Function to select AI provider
 select_ai_provider() {
@@ -76,120 +80,86 @@ select_ai_provider() {
 
 case "$choice" in
     1)
+        # Store AI Provider API Key
         select_ai_provider
-        echo ""
-        echo "📦 macOS Keychain Storage"
-        echo "========================="
-        echo ""
-        read -p "Enter ${API_KEY_NAME}: " api_key
         
-        if [ ! -z "$api_key" ]; then
-            # Store in macOS Keychain
-            security add-generic-password \
-                -a "$USER" \
-                -s "$API_KEY_NAME" \
-                -w "$api_key" \
-                -U \
-                -T /usr/bin/security
-            
-            echo ""
-            echo "✅ Stored in macOS Keychain!"
-            echo ""
-            echo "Add this to your ~/.zshrc to load it automatically:"
-            echo ""
-            echo "# Load ${API_KEY_NAME} from Keychain"
-            echo "export ${API_KEY_NAME}=\$(security find-generic-password -a \"\$USER\" -s \"${API_KEY_NAME}\" -w 2>/dev/null)"
-            echo ""
-        fi
+        echo ""
+        echo "Choose storage method:"
+        echo ""
+        echo "  1. macOS Keychain (Recommended - Most Secure)"
+        echo "  2. Environment file (~/.env.api-keys)"
+        echo ""
+        read -p "Storage method (1-2): " storage_method
+        
+        case "$storage_method" in
+            1)
+                echo ""
+                echo "📦 macOS Keychain Storage"
+                echo "========================="
+                echo ""
+                read -p "Enter ${API_KEY_NAME}: " api_key
+                
+                if [ ! -z "$api_key" ]; then
+                    # Store in macOS Keychain
+                    security add-generic-password \
+                        -a "$USER" \
+                        -s "$API_KEY_NAME" \
+                        -w "$api_key" \
+                        -U \
+                        -T /usr/bin/security
+                    
+                    echo ""
+                    echo "✅ Stored in macOS Keychain!"
+                    echo ""
+                    echo "The key will be automatically loaded when you use gq commands."
+                    echo ""
+                fi
+                ;;
+            2)
+                echo ""
+                echo "📄 Environment File Storage"
+                echo "==========================="
+                echo ""
+                
+                ENV_FILE="$HOME/.env.api-keys"
+                
+                read -p "Enter ${API_KEY_NAME}: " api_key
+                
+                if [ ! -z "$api_key" ]; then
+                    # Create or update .env file
+                    if [ -f "$ENV_FILE" ]; then
+                        # Update existing
+                        if grep -q "^${API_KEY_NAME}=" "$ENV_FILE"; then
+                            sed -i '' "s|^${API_KEY_NAME}=.*|${API_KEY_NAME}='$api_key'|" "$ENV_FILE"
+                        else
+                            echo "${API_KEY_NAME}='$api_key'" >> "$ENV_FILE"
+                        fi
+                    else
+                        echo "${API_KEY_NAME}='$api_key'" > "$ENV_FILE"
+                    fi
+                    
+                    # Set restrictive permissions
+                    chmod 600 "$ENV_FILE"
+                    
+                    echo ""
+                    echo "✅ Stored in: $ENV_FILE (permissions: 600)"
+                    echo ""
+                    echo "Add this to your ~/.zshrc to load it:"
+                    echo ""
+                    echo "# Load API keys from secure file"
+                    echo "if [ -f \"$ENV_FILE\" ]; then"
+                    echo "  source \"$ENV_FILE\""
+                    echo "fi"
+                    echo ""
+                fi
+                ;;
+            *)
+                echo "Invalid choice"
+                exit 1
+                ;;
+        esac
         ;;
     2)
-        select_ai_provider
-        echo ""
-        echo "🔒 SOPS Encrypted Storage"
-        echo "========================="
-        echo ""
-        
-        # Check if SOPS is available
-        if ! command -v sops &> /dev/null; then
-            echo "❌ SOPS is not installed"
-            echo "Install with: brew install sops"
-            exit 1
-        fi
-        
-        # Check for SOPS key
-        if [ -z "$SOPS_AGE_KEY_FILE" ]; then
-            echo "⚠️  SOPS_AGE_KEY_FILE not set"
-            echo "Set it in your ~/.zshrc:"
-            echo "  export SOPS_AGE_KEY_FILE=/path/to/age-key.txt"
-            exit 1
-        fi
-        
-        read -p "Enter ${API_KEY_NAME}: " api_key
-        
-        if [ ! -z "$api_key" ]; then
-            # Create or update encrypted file
-            SECRETS_FILE="$HOME/Documents/secrets/api-keys.yaml"
-            
-            if [ -f "$SECRETS_FILE" ]; then
-                # Update existing file
-                sops --set "[\"${API_KEY_NAME}\"] \"$api_key\"" "$SECRETS_FILE"
-            else
-                # Create new file
-                echo "${API_KEY_NAME}: \"$api_key\"" | sops --encrypt /dev/stdin > "$SECRETS_FILE"
-            fi
-            
-            echo ""
-            echo "✅ Encrypted and stored in: $SECRETS_FILE"
-            echo ""
-            echo "Add this to your ~/.zshrc to load it:"
-            echo ""
-            echo "# Load API keys from SOPS"
-            echo "if [ -f \"$SECRETS_FILE\" ]; then"
-            echo "  export ${API_KEY_NAME}=\$(sops --decrypt --extract '[\"${API_KEY_NAME}\"]' \"$SECRETS_FILE\")"
-            echo "fi"
-            echo ""
-        fi
-        ;;
-    3)
-        select_ai_provider
-        echo ""
-        echo "📄 Environment File Storage"
-        echo "==========================="
-        echo ""
-        
-        ENV_FILE="$HOME/.env.api-keys"
-        
-        read -p "Enter ${API_KEY_NAME}: " api_key
-        
-        if [ ! -z "$api_key" ]; then
-            # Create or update .env file
-            if [ -f "$ENV_FILE" ]; then
-                # Update existing
-                if grep -q "^${API_KEY_NAME}=" "$ENV_FILE"; then
-                    sed -i '' "s|^${API_KEY_NAME}=.*|${API_KEY_NAME}='$api_key'|" "$ENV_FILE"
-                else
-                    echo "${API_KEY_NAME}='$api_key'" >> "$ENV_FILE"
-                fi
-            else
-                echo "${API_KEY_NAME}='$api_key'" > "$ENV_FILE"
-            fi
-            
-            # Set restrictive permissions
-            chmod 600 "$ENV_FILE"
-            
-            echo ""
-            echo "✅ Stored in: $ENV_FILE (permissions: 600)"
-            echo ""
-            echo "Add this to your ~/.zshrc to load it:"
-            echo ""
-            echo "# Load API keys from secure file"
-            echo "if [ -f \"$ENV_FILE\" ]; then"
-            echo "  source \"$ENV_FILE\""
-            echo "fi"
-            echo ""
-        fi
-        ;;
-    4)
         echo ""
         echo "🎫 Jira Integration Setup"
         echo "========================="
@@ -224,9 +194,8 @@ case "$choice" in
             echo ""
             echo "Choose storage method:"
             echo "  1. macOS Keychain (Recommended)"
-            echo "  2. SOPS encrypted file"
-            echo "  3. Environment file"
-            read -p "Choice (1-3): " jira_storage_choice
+            echo "  2. Environment file"
+            read -p "Choice (1-2): " jira_storage_choice
             
             case "$jira_storage_choice" in
                 1)
@@ -245,27 +214,6 @@ case "$choice" in
                     echo ""
                     ;;
                 2)
-                    # Store in SOPS
-                    if ! command -v sops &> /dev/null; then
-                        echo "❌ SOPS is not installed. Install with: brew install sops"
-                        exit 1
-                    fi
-                    
-                    SECRETS_FILE="$HOME/Documents/secrets/api-keys.yaml"
-                    
-                    if [ -f "$SECRETS_FILE" ]; then
-                        sops --set "[\"JIRA_API_KEY\"] \"$jira_api_key\"" "$SECRETS_FILE"
-                        sops --set "[\"JIRA_EMAIL\"] \"$jira_email\"" "$SECRETS_FILE"
-                        sops --set "[\"JIRA_BASE_URL\"] \"$jira_base_url\"" "$SECRETS_FILE"
-                    else
-                        echo -e "JIRA_API_KEY: \"$jira_api_key\"\nJIRA_EMAIL: \"$jira_email\"\nJIRA_BASE_URL: \"$jira_base_url\"" | sops --encrypt /dev/stdin > "$SECRETS_FILE"
-                    fi
-                    
-                    echo ""
-                    echo "✅ Jira credentials encrypted and stored in SOPS!"
-                    echo ""
-                    ;;
-                3)
                     # Store in env file
                     ENV_FILE="$HOME/.env.api-keys"
                     
@@ -297,7 +245,7 @@ case "$choice" in
             exit 1
         fi
         ;;
-    5)
+    3)
         echo ""
         echo "📋 Current Setup"
         echo "==============="
@@ -317,9 +265,6 @@ case "$choice" in
         else
             echo "    None found"
         fi
-        echo ""
-        echo "SOPS files:"
-        ls -lh "$HOME/Documents/secrets/"*.yaml 2>/dev/null || echo "  None found"
         ;;
     *)
         echo "Invalid choice"

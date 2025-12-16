@@ -102,9 +102,9 @@ gq push     # Push + Update Jira
 
 ### 🔐 Secure Credential Storage
 
-- macOS Keychain integration (primary)
-- SOPS encryption support (for teams)
-- Environment file fallback
+- macOS Keychain integration (primary - automatically loads credentials)
+- Environment file fallback (~/.env.api-keys with restricted permissions)
+- Automatic credential loading - no manual export needed
 - Never commits credentials to git
 
 ---
@@ -126,23 +126,24 @@ gq push     # Push + Update Jira
 ```bash
 # 1. Clone the repository
 git clone https://github.com/yourusername/gitquick.git
-cd gitquick/automation
+cd gitquick
 
 # 2. Initialize gq (sets up shell configuration)
 ./git-cli.sh init
-
-# 3. Reload your shell
-source ~/.zshrc  # or ~/.bashrc
-
-# 4. Configure credentials and AI provider
-gq init
+# This will:
+# - Ask you to select shell config file (.zshrc or .bashrc)
+# - Add gq function to your shell config
+# - Automatically reload shell config (or show instructions)
+# - Prompt to install cursor-agent if you prefer Cursor AI
+# - Guide you through credential setup
 ```
 
 **Important:**
 
-- `./git-cli.sh init` (step 2) is **required** to make the `gq` command available - it adds the shell function to your config file
-- `gq init` (step 4) configures credentials - you can skip this and use `gq` commands, but ai features and jira integration wont work without credentials
-- Without step 2, the `gq` command won't exist, but you can use `./git-cli.sh [command]` directly instead
+- `./git-cli.sh init` is **required** to make the `gq` command available
+- Shell config is automatically reloaded after setup (no manual `source` needed)
+- You can choose which shell config file to use (.zshrc or .bashrc)
+- Cursor CLI installation is offered automatically during init
 
 ---
 
@@ -153,48 +154,48 @@ gq init
 **1. Initialize GitQuick**
 
 ```bash
-gq init
+./git-cli.sh init
 # This will:
-# - Configure shell paths (adds gq function to ~/.zshrc or ~/.bashrc)
-# - Show credential storage menu
-#   Choose storage method:
-#   1. macOS Keychain (Recommended - Most Secure)
-#   2. SOPS encrypted file (if you use SOPS)
-#   3. Environment file with restricted permissions
-#   4. Setup Jira Integration
-#   5. Show current setup
+# 1. Ask you to select shell config file (.zshrc or .bashrc)
+# 2. Add gq function to your shell config
+# 3. Automatically reload shell config
+# 4. Prompt to install cursor-agent (if you want Cursor AI)
+# 5. Guide you through credential setup
 ```
 
 **2. Configure AI Provider** (choose one)
 
-After `gq init`, you'll need to set up your AI provider API key:
+During `gq init` or later with `gq update`:
 
 ```bash
-# Use gq update (interactive - supports all providers)
 gq update
-# 1. Select storage method (1-3):
-#    1. macOS Keychain (Recommended)
-#    2. SOPS encrypted file
-#    3. Environment file
-# 2. Select AI provider (1-3):
-#    1. Cursor AI (CURSOR_API_KEY)
-#    2. OpenAI (OPENAI_API_KEY)
-#    3. Anthropic Claude (ANTHROPIC_API_KEY)
-# 3. Enter your API key
+# What would you like to configure?
+# 1. Store AI Provider API Key
+#    → Select provider: Cursor AI / OpenAI / Anthropic Claude
+#    → Choose storage: macOS Keychain or Environment file
+#    → Enter your API key
+# 2. Setup Jira Integration
+# 3. Show current setup
 ```
 
-**Alternative:** You can also manually configure by setting environment variables or adding to Keychain/SOPS/env file directly.
+**AI Provider Options:**
+
+- **Cursor AI**: Uses `cursor-agent` CLI (installed automatically during init if you choose)
+- **OpenAI**: Requires API key (stored securely in Keychain or env file)
+- **Anthropic Claude**: Requires API key (stored securely in Keychain or env file)
+
+**Note:** API keys are automatically loaded from Keychain when you run `gq` commands - no need to export them manually!
 
 **3. Configure Jira** (optional but recommended)
 
 ```bash
-# Option A: During gq init, choose option 4
-# Option B: Use gq update and select option 4
 gq update
-# Select option 4, then enter:
+# Select option 2: Setup Jira Integration
+# Enter:
 # - Jira email
 # - Jira API token (get from https://id.atlassian.com/manage-profile/security/api-tokens)
 # - Jira base URL (e.g., https://company.atlassian.net)
+# Choose storage: macOS Keychain (recommended) or Environment file
 
 # Then select default project
 gq jira select
@@ -286,12 +287,12 @@ gq cp
 
 ### Configuration Commands
 
-| Command     | Description                                |
-| ----------- | ------------------------------------------ |
-| `gq init`   | Initial setup (shell config + credentials) |
-| `gq update` | Update API keys and credentials            |
-| `gq config` | Show current configuration                 |
-| `gq help`   | Show command reference                     |
+| Command     | Description                                                                                                       |
+| ----------- | ----------------------------------------------------------------------------------------------------------------- |
+| `gq init`   | Initial setup (selects shell config, installs cursor-agent if needed, configures credentials, auto-reloads shell) |
+| `gq update` | Update API keys and credentials (auto-reloads shell config)                                                       |
+| `gq config` | Show current configuration                                                                                        |
+| `gq help`   | Show command reference                                                                                            |
 
 ---
 
@@ -413,9 +414,11 @@ gq push
 - Best for: If you already use Cursor IDE
 - Seamless integration with existing Cursor subscription
 - **Prerequisites:** Requires `cursor-agent` CLI tool
-  - Install: `./install-cursor-cli.sh` or `curl https://cursor.com/install -fsS | bash`
-  - Authenticate: `cursor-agent login` OR set `CURSOR_API_KEY` environment variable
+  - **Automatically installed** during `gq init` if you choose Cursor AI
+  - Or install manually: `./install-cursor-cli.sh` or `curl https://cursor.com/install -fsS | bash`
+  - Authenticate: `cursor-agent login` OR set `CURSOR_API_KEY` in Keychain/env file
 - Cost: Uses Cursor subscription credits (Free tier: limited)
+- **Note:** API keys are automatically loaded from Keychain - no manual export needed!
 
 ### How AI is Used
 
@@ -455,26 +458,23 @@ If AI is unavailable:
 - System-level encryption
 - Requires macOS password to access
 - Automatic security updates from Apple
+- Credentials automatically loaded when running `gq` commands
 - Best for: Individual developers on macOS
-
-**SOPS** (For Teams)
-
-- Encrypted YAML files
-- Version control friendly
-- Team key management
-- Best for: Teams with existing SOPS setup
 
 **Environment Files** (Fallback)
 
-- Restricted permissions (600)
+- Stored in `~/.env.api-keys` with restricted permissions (600)
 - Local machine only
-- Best for: Development environments
+- Requires manual sourcing in shell config
+- Best for: Development environments or when Keychain is not available
+
+**Note:** SOPS is still supported as a fallback if you have existing SOPS setup, but it's no longer available in the interactive menu.
 
 ### What's Stored
 
-- Jira API token
-- Jira email and base URL
+- Jira API token, email, and base URL
 - AI provider API keys (OpenAI/Claude/Cursor)
+- All credentials automatically loaded when running `gq` commands
 
 ### Security Best Practices
 
@@ -496,6 +496,7 @@ If AI is unavailable:
 # Solution: Reinitialize shell configuration
 cd gitquick/automation
 ./git-cli.sh init
+# Shell config is automatically reloaded, but if it doesn't work:
 source ~/.zshrc  # or ~/.bashrc
 ```
 
@@ -504,7 +505,7 @@ source ~/.zshrc  # or ~/.bashrc
 ```bash
 # Solution: Configure Jira
 gq update
-# Select option 4, enter credentials
+# Select option 2: Setup Jira Integration, enter credentials
 ```
 
 **"jq command not found"**
@@ -572,7 +573,7 @@ Built with:
 - OpenAI GPT-4 / Anthropic Claude / Cursor AI
 - Jira REST API
 - macOS Keychain Services
-- SOPS (for team deployments)
+- Automatic credential loading and management
 
 ---
 
