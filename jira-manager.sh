@@ -531,15 +531,78 @@ find_jira_field() {
     
     check_credentials
     
-    # Find the script
-    local find_script="$SCRIPT_DIR/find-jira-custom-fields.sh"
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${BLUE}🔍 Jira Custom Field Finder${NC}"
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
     
-    if [ ! -f "$find_script" ]; then
-        echo -e "${RED}Error: find-jira-custom-fields.sh not found${NC}"
+    # Fetch all fields
+    echo -e "${BLUE}📋 Fetching all Jira fields...${NC}"
+    local fields=$(curl -s -X GET \
+        "${JIRA_BASE_URL}/rest/api/3/field" \
+        -H "Content-Type: application/json" \
+        -H "Accept: application/json" \
+        -u "${JIRA_EMAIL}:${JIRA_API_KEY}")
+    
+    if [ $? -ne 0 ] || [ -z "$fields" ]; then
+        echo -e "${RED}Failed to fetch fields from Jira${NC}"
         return 1
     fi
     
-    bash "$find_script" "$search_term"
+    # Validate JSON response
+    if ! echo "$fields" | jq empty 2>/dev/null; then
+        echo -e "${RED}Invalid JSON response from Jira API${NC}"
+        return 1
+    fi
+    
+    echo -e "${YELLOW}Searching for fields matching: '$search_term'${NC}"
+    echo ""
+    
+    # Get matching fields as JSON array
+    local matching_fields=$(echo "$fields" | jq -c --arg search "$search_term" \
+        '[.[] | select(.name | ascii_downcase | contains($search | ascii_downcase)) | {id: .id, name: .name, type: (.schema.type // "unknown"), custom: (.custom // false)}]' 2>/dev/null)
+    
+    if [ $? -ne 0 ] || [ -z "$matching_fields" ]; then
+        echo -e "${RED}Failed to parse fields${NC}"
+        return 1
+    fi
+    
+    local count=$(echo "$matching_fields" | jq 'length' 2>/dev/null || echo "0")
+    
+    if [ "$count" -eq 0 ]; then
+        echo -e "${YELLOW}No fields found matching: '$search_term'${NC}"
+        echo ""
+        echo -e "${BLUE}💡 Tips:${NC}"
+        echo -e "  • Check your spelling (e.g., 'original' not 'orginal')"
+        echo -e "  • Try a shorter search term (e.g., 'estimate' instead of 'original estimate')"
+        echo -e "  • Try partial words (e.g., 'dev', 'effort', 'story')"
+        return 1
+    fi
+    
+    echo -e "${GREEN}Found $count field(s) matching '$search_term'${NC}"
+    echo ""
+    
+    # Display numbered list
+    echo "$matching_fields" | jq -r 'to_entries[] | 
+        "\u001b[33m\(.key + 1). \(.value.name)\u001b[0m\n   ID: \u001b[32m\(.value.id)\u001b[0m | Type: \(.value.type) | Custom: \(if .value.custom then "\u001b[32m✓\u001b[0m" else "\u001b[31m✗\u001b[0m" end)\n"'
+    
+    # Ask user to select
+    echo ""
+    echo -e "${YELLOW}Select a field to add to configuration (or press Enter to skip):${NC}"
+    read -p "Enter number: " selection
+    
+    if [[ "$selection" =~ ^[0-9]+$ ]] && [ "$selection" -ge 1 ] && [ "$selection" -le "$count" ]; then
+        # Get selected field
+        local selected_field=$(echo "$matching_fields" | jq -r ".[$((selection - 1))]")
+        local field_name=$(echo "$selected_field" | jq -r '.name')
+        local field_id=$(echo "$selected_field" | jq -r '.id')
+        
+        echo ""
+        echo -e "${BLUE}📝 Adding field to configuration...${NC}"
+        add_custom_field "$field_name" "$field_id"
+    elif [ ! -z "$selection" ]; then
+        echo -e "${YELLOW}Invalid selection${NC}"
+    fi
 }
 
 show_help() {
