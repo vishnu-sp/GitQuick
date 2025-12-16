@@ -137,7 +137,11 @@ source ~/.zshrc  # or ~/.bashrc
 gq init
 ```
 
-That's it! You're ready to use `gq`.
+**Important:**
+
+- `./git-cli.sh init` (step 2) is **required** to make the `gq` command available - it adds the shell function to your config file
+- `gq init` (step 4) configures credentials - you can skip this and use `gq` commands, but ai features and jira integration wont work without credentials
+- Without step 2, the `gq` command won't exist, but you can use `./git-cli.sh [command]` directly instead
 
 ---
 
@@ -145,21 +149,46 @@ That's it! You're ready to use `gq`.
 
 ### First-Time Setup
 
-**1. Configure AI Provider** (choose one)
+**1. Initialize GitQuick**
 
 ```bash
-gq update
-# Select your AI provider:
-# 1. OpenAI (GPT-4) - Best for general use
-# 2. Anthropic (Claude) - Best for detailed analysis
-# 3. Cursor AI - Best if you already use Cursor IDE
+gq init
+# This will:
+# - Configure shell paths (adds gq function to ~/.zshrc or ~/.bashrc)
+# - Show credential storage menu
+#   Choose storage method:
+#   1. macOS Keychain (Recommended - Most Secure)
+#   2. SOPS encrypted file (if you use SOPS)
+#   3. Environment file with restricted permissions
+#   4. Setup Jira Integration
+#   5. Show current setup
 ```
 
-**2. Configure Jira** (optional but recommended)
+**2. Configure AI Provider** (choose one)
+
+After `gq init`, you'll need to set up your AI provider API key:
 
 ```bash
+# During gq init, choose option 1-3 to store CURSOR_API_KEY
+# Or use gq update to configure credentials:
 gq update
-# Enter your:
+# Select storage method (1-3) and enter your API key
+# Currently supports: CURSOR_API_KEY (interactive)
+#
+# For OpenAI or Anthropic, you can:
+# - Set environment variable: export OPENAI_API_KEY="your-key"
+# - Or manually add to Keychain/SOPS/env file using the same method
+```
+
+**Note:** The interactive script currently focuses on CURSOR_API_KEY. For OpenAI or Anthropic, set the environment variable (`OPENAI_API_KEY` or `ANTHROPIC_API_KEY`) or manually add to your chosen storage method.
+
+**3. Configure Jira** (optional but recommended)
+
+```bash
+# Option A: During gq init, choose option 4
+# Option B: Use gq update and select option 4
+gq update
+# Select option 4, then enter:
 # - Jira email
 # - Jira API token (get from https://id.atlassian.com/manage-profile/security/api-tokens)
 # - Jira base URL (e.g., https://company.atlassian.net)
