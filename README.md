@@ -116,9 +116,10 @@ gq push     # Push + Update Jira
 - macOS (for Keychain support, optional)
 - Git installed
 - Bash or Zsh
-- `jq` - JSON processor: `brew install jq`
+- `jq` - JSON processor: `brew install jq` (required for Jira integration and AI features)
 - Python 3 (for Jira integration)
-- One AI provider: OpenAI, Anthropic (Claude), or Cursor
+- One AI provider: OpenAI, Anthropic (Claude), or Cursor (required for AI commit messages)
+  - **For Cursor:** Also requires `cursor-agent` CLI - install with `./install-cursor-cli.sh`
 
 ### Quick Install
 
@@ -169,18 +170,20 @@ gq init
 After `gq init`, you'll need to set up your AI provider API key:
 
 ```bash
-# During gq init, choose option 1-3 to store CURSOR_API_KEY
-# Or use gq update to configure credentials:
+# Use gq update (interactive - supports all providers)
 gq update
-# Select storage method (1-3) and enter your API key
-# Currently supports: CURSOR_API_KEY (interactive)
-#
-# For OpenAI or Anthropic, you can:
-# - Set environment variable: export OPENAI_API_KEY="your-key"
-# - Or manually add to Keychain/SOPS/env file using the same method
+# 1. Select storage method (1-3):
+#    1. macOS Keychain (Recommended)
+#    2. SOPS encrypted file
+#    3. Environment file
+# 2. Select AI provider (1-3):
+#    1. Cursor AI (CURSOR_API_KEY)
+#    2. OpenAI (OPENAI_API_KEY)
+#    3. Anthropic Claude (ANTHROPIC_API_KEY)
+# 3. Enter your API key
 ```
 
-**Note:** The interactive script currently focuses on CURSOR_API_KEY. For OpenAI or Anthropic, set the environment variable (`OPENAI_API_KEY` or `ANTHROPIC_API_KEY`) or manually add to your chosen storage method.
+**Alternative:** You can also manually configure by setting environment variables or adding to Keychain/SOPS/env file directly.
 
 **3. Configure Jira** (optional but recommended)
 
@@ -409,7 +412,10 @@ gq push
 
 - Best for: If you already use Cursor IDE
 - Seamless integration with existing Cursor subscription
-- Install: `./install-cursor-cli.sh`
+- **Prerequisites:** Requires `cursor-agent` CLI tool
+  - Install: `./install-cursor-cli.sh` or `curl https://cursor.com/install -fsS | bash`
+  - Authenticate: `cursor-agent login` OR set `CURSOR_API_KEY` environment variable
+- Cost: Uses Cursor subscription credits (Free tier: limited)
 
 ### How AI is Used
 

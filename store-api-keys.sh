@@ -44,19 +44,50 @@ echo "4. Setup Jira Integration (for automatic ticket updates)"
 echo "5. Show current setup"
 read -p "Choice (1-5): " choice
 
+# Function to select AI provider
+select_ai_provider() {
+    echo ""
+    echo "Select AI Provider:"
+    echo ""
+    echo "1. Cursor AI (CURSOR_API_KEY)"
+    echo "2. OpenAI (OPENAI_API_KEY)"
+    echo "3. Anthropic Claude (ANTHROPIC_API_KEY)"
+    read -p "Choice (1-3): " provider_choice
+    
+    case "$provider_choice" in
+        1)
+            API_KEY_NAME="CURSOR_API_KEY"
+            PROVIDER_NAME="Cursor AI"
+            ;;
+        2)
+            API_KEY_NAME="OPENAI_API_KEY"
+            PROVIDER_NAME="OpenAI"
+            ;;
+        3)
+            API_KEY_NAME="ANTHROPIC_API_KEY"
+            PROVIDER_NAME="Anthropic Claude"
+            ;;
+        *)
+            echo "❌ Invalid choice"
+            exit 1
+            ;;
+    esac
+}
+
 case "$choice" in
     1)
+        select_ai_provider
         echo ""
         echo "📦 macOS Keychain Storage"
         echo "========================="
         echo ""
-        read -p "Enter CURSOR_API_KEY: " api_key
+        read -p "Enter ${API_KEY_NAME}: " api_key
         
         if [ ! -z "$api_key" ]; then
             # Store in macOS Keychain
             security add-generic-password \
                 -a "$USER" \
-                -s "CURSOR_API_KEY" \
+                -s "$API_KEY_NAME" \
                 -w "$api_key" \
                 -U \
                 -T /usr/bin/security
@@ -66,12 +97,13 @@ case "$choice" in
             echo ""
             echo "Add this to your ~/.zshrc to load it automatically:"
             echo ""
-            echo "# Load CURSOR_API_KEY from Keychain"
-            echo "export CURSOR_API_KEY=\$(security find-generic-password -a \"\$USER\" -s \"CURSOR_API_KEY\" -w 2>/dev/null)"
+            echo "# Load ${API_KEY_NAME} from Keychain"
+            echo "export ${API_KEY_NAME}=\$(security find-generic-password -a \"\$USER\" -s \"${API_KEY_NAME}\" -w 2>/dev/null)"
             echo ""
         fi
         ;;
     2)
+        select_ai_provider
         echo ""
         echo "🔒 SOPS Encrypted Storage"
         echo "========================="
@@ -92,7 +124,7 @@ case "$choice" in
             exit 1
         fi
         
-        read -p "Enter CURSOR_API_KEY: " api_key
+        read -p "Enter ${API_KEY_NAME}: " api_key
         
         if [ ! -z "$api_key" ]; then
             # Create or update encrypted file
@@ -100,10 +132,10 @@ case "$choice" in
             
             if [ -f "$SECRETS_FILE" ]; then
                 # Update existing file
-                sops --set "[\"CURSOR_API_KEY\"] \"$api_key\"" "$SECRETS_FILE"
+                sops --set "[\"${API_KEY_NAME}\"] \"$api_key\"" "$SECRETS_FILE"
             else
                 # Create new file
-                echo "CURSOR_API_KEY: \"$api_key\"" | sops --encrypt /dev/stdin > "$SECRETS_FILE"
+                echo "${API_KEY_NAME}: \"$api_key\"" | sops --encrypt /dev/stdin > "$SECRETS_FILE"
             fi
             
             echo ""
@@ -113,12 +145,13 @@ case "$choice" in
             echo ""
             echo "# Load API keys from SOPS"
             echo "if [ -f \"$SECRETS_FILE\" ]; then"
-            echo "  export CURSOR_API_KEY=\$(sops --decrypt --extract '[\"CURSOR_API_KEY\"]' \"$SECRETS_FILE\")"
+            echo "  export ${API_KEY_NAME}=\$(sops --decrypt --extract '[\"${API_KEY_NAME}\"]' \"$SECRETS_FILE\")"
             echo "fi"
             echo ""
         fi
         ;;
     3)
+        select_ai_provider
         echo ""
         echo "📄 Environment File Storage"
         echo "==========================="
@@ -126,19 +159,19 @@ case "$choice" in
         
         ENV_FILE="$HOME/.env.api-keys"
         
-        read -p "Enter CURSOR_API_KEY: " api_key
+        read -p "Enter ${API_KEY_NAME}: " api_key
         
         if [ ! -z "$api_key" ]; then
             # Create or update .env file
             if [ -f "$ENV_FILE" ]; then
                 # Update existing
-                if grep -q "^CURSOR_API_KEY=" "$ENV_FILE"; then
-                    sed -i '' "s|^CURSOR_API_KEY=.*|CURSOR_API_KEY='$api_key'|" "$ENV_FILE"
+                if grep -q "^${API_KEY_NAME}=" "$ENV_FILE"; then
+                    sed -i '' "s|^${API_KEY_NAME}=.*|${API_KEY_NAME}='$api_key'|" "$ENV_FILE"
                 else
-                    echo "CURSOR_API_KEY='$api_key'" >> "$ENV_FILE"
+                    echo "${API_KEY_NAME}='$api_key'" >> "$ENV_FILE"
                 fi
             else
-                echo "CURSOR_API_KEY='$api_key'" > "$ENV_FILE"
+                echo "${API_KEY_NAME}='$api_key'" > "$ENV_FILE"
             fi
             
             # Set restrictive permissions
