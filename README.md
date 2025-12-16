@@ -29,7 +29,7 @@ I love coding, but I HATE:
 
 ## What GitQuick Does
 
-⚡ **3x faster** - One command replaces 5 manual steps  
+⚡ **faster** - One command replaces 5 manual steps  
 🤖 **Smarter commits** - AI analyzes your changes, not generic templates  
 🎯 **Zero context switching** - Update Jira without leaving your terminal  
 🔒 **Actually secure** - macOS Keychain, not plaintext files
