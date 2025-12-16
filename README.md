@@ -6,8 +6,6 @@
 [![macOS](https://img.shields.io/badge/platform-macOS-lightgrey.svg)](https://www.apple.com/macos)
 [![GitHub stars](https://img.shields.io/github/stars/yourusername/gitquick?style=social)](https://github.com/yourusername/gitquick)
 
-**Stop writing commit messages manually. Let AI handle Git workflows while you focus on coding.**
-
 [Quick Start](#installation) • [Features](#features) • [Documentation](#quick-start) • [Contributing](.github/CONTRIBUTING.md)
 
 <img src="docs/demo.gif" alt="GitQuick Demo" width="600">
