@@ -1,9 +1,6 @@
 # Development files
 .github/
 .git/
-*.md
-!README.md
-!README-NPM.md
 
 # Python files (not needed in NPM package)
 generate-jira-comment.py
