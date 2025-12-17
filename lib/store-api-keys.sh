@@ -195,7 +195,8 @@ echo ""
 echo "3. Show current setup"
 echo "   → View all configured API keys and credentials"
 echo ""
-read -p "Choice (1-3): " choice
+printf "Choice (1-3): "
+read choice
 
 # Function to select AI provider
 select_ai_provider() {
@@ -205,7 +206,8 @@ select_ai_provider() {
     echo "1. Cursor AI (CURSOR_API_KEY)"
     echo "2. OpenAI (OPENAI_API_KEY)"
     echo "3. Anthropic Claude (ANTHROPIC_API_KEY)"
-    read -p "Choice (1-3): " provider_choice
+    printf "Choice (1-3): "
+    read provider_choice
     
     case "$provider_choice" in
         1)
@@ -254,7 +256,8 @@ case "$choice" in
         echo "📦 Auto-detected: $storage_name"
         echo "================================"
         echo ""
-        read -p "Enter ${API_KEY_NAME}: " api_key
+        printf "Enter ${API_KEY_NAME}: "
+        read api_key
         
         if [ ! -z "$api_key" ]; then
             # Store the key and capture both output and exit code
@@ -324,9 +327,12 @@ case "$choice" in
         echo "  3. Copy the generated token"
         echo ""
         
-        read -p "Enter your Jira email: " jira_email
-        read -p "Enter your Jira API token: " jira_api_key
-        read -p "Enter your Jira base URL (e.g., https://company.atlassian.net): " jira_base_url
+        printf "Enter your Jira email: "
+        read jira_email
+        printf "Enter your Jira API token: "
+        read jira_api_key
+        printf "Enter your Jira base URL (e.g., https://company.atlassian.net): "
+        read jira_base_url
         
         # Remove trailing slash from URL if present
         jira_base_url="${jira_base_url%/}"

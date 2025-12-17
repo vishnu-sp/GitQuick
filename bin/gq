@@ -134,7 +134,8 @@ init_gq() {
     fi
     
     echo ""
-    read -p "Choice (1-2) [default: 1]: " shell_choice
+    printf "Choice (1-2) [default: 1]: "
+    read shell_choice
     
     # Default to option 1 if empty
     shell_choice="${shell_choice:-1}"
@@ -250,7 +251,8 @@ EOF
         echo -e "    • OpenAI (requires API key)"
         echo -e "    • Anthropic Claude (requires API key)"
         echo ""
-        read -p "Install cursor-agent? (Y/n): " install_cursor
+        printf "Install cursor-agent? (Y/n): "
+        read install_cursor
         
         # Default to yes if empty
         install_cursor="${install_cursor:-y}"
@@ -348,7 +350,8 @@ reset_gq() {
     echo ""
     echo -e "${RED}This action cannot be undone!${NC}"
     echo ""
-    read -p "Are you sure you want to reset everything? (type 'yes' to confirm): " confirm
+    printf "Are you sure you want to reset everything? (type 'yes' to confirm): "
+    read confirm
     
     if [ "$confirm" != "yes" ]; then
         echo -e "${BLUE}Reset cancelled.${NC}"
@@ -453,7 +456,8 @@ reset_gq() {
                 echo -e "    • API key loading code"
             fi
             echo ""
-            read -p "Remove gq configuration from $shell_config? (y/N): " remove_shell
+            printf "Remove gq configuration from $shell_config? (y/N): "
+            read remove_shell
             remove_shell=$(echo "$remove_shell" | tr '[:upper:]' '[:lower:]' | xargs)
             
             if [[ "$remove_shell" == "y" ]] || [[ "$remove_shell" == "yes" ]]; then
