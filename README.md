@@ -181,7 +181,7 @@ gq cp DH-1234
 
 ## Configuration
 
-### AI Providers
+### AI Provider
 
 Choose one AI provider:
 
