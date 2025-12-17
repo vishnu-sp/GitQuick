@@ -156,29 +156,100 @@ echo "🔐 Secure API Key Storage"
 echo "========================="
 echo ""
 
+# Helper function to check if key exists in any source
+check_key_exists() {
+    local key_name="$1"
+    
+    # Check environment variable
+    case "$key_name" in
+        CURSOR_API_KEY)
+            if [ ! -z "$CURSOR_API_KEY" ]; then
+                echo "env"
+                return 0
+            fi
+            ;;
+        OPENAI_API_KEY)
+            if [ ! -z "$OPENAI_API_KEY" ]; then
+                echo "env"
+                return 0
+            fi
+            ;;
+        ANTHROPIC_API_KEY)
+            if [ ! -z "$ANTHROPIC_API_KEY" ]; then
+                echo "env"
+                return 0
+            fi
+            ;;
+        JIRA_API_KEY)
+            if [ ! -z "$JIRA_API_KEY" ]; then
+                echo "env"
+                return 0
+            fi
+            ;;
+        JIRA_EMAIL)
+            if [ ! -z "$JIRA_EMAIL" ]; then
+                echo "env"
+                return 0
+            fi
+            ;;
+        JIRA_BASE_URL)
+            if [ ! -z "$JIRA_BASE_URL" ]; then
+                echo "env"
+                return 0
+            fi
+            ;;
+    esac
+    
+    # Check Keychain
+    if security find-generic-password -a "$USER" -s "$key_name" &>/dev/null; then
+        local key_value=$(security find-generic-password -a "$USER" -s "$key_name" -w 2>/dev/null)
+        if [ ! -z "$key_value" ] && [ ${#key_value} -gt 10 ]; then
+            echo "keychain"
+            return 0
+        fi
+    fi
+    
+    # Check .env.api-keys file
+    if [ -f "$HOME/.env.api-keys" ]; then
+        if grep -q "^${key_name}=" "$HOME/.env.api-keys" 2>/dev/null; then
+            local env_value=$(grep "^${key_name}=" "$HOME/.env.api-keys" 2>/dev/null | cut -d'=' -f2- | sed "s/^['\"]//;s/['\"]$//")
+            if [ ! -z "$env_value" ] && [ ${#env_value} -gt 10 ]; then
+                echo "file"
+                return 0
+            fi
+        fi
+    fi
+    
+    echo "none"
+    return 1
+}
+
 # Check what's already configured
-if [ ! -z "$CURSOR_API_KEY" ]; then
-    echo "✓ CURSOR_API_KEY is currently set"
+CURSOR_CHECK=$(check_key_exists "CURSOR_API_KEY")
+if [ "$CURSOR_CHECK" != "none" ]; then
+    echo "✓ CURSOR_API_KEY is currently set (source: $CURSOR_CHECK)"
 else
     echo "✗ CURSOR_API_KEY is not set"
 fi
 
-if [ ! -z "$OPENAI_API_KEY" ]; then
-    echo "✓ OPENAI_API_KEY is currently set"
+OPENAI_CHECK=$(check_key_exists "OPENAI_API_KEY")
+if [ "$OPENAI_CHECK" != "none" ]; then
+    echo "✓ OPENAI_API_KEY is currently set (source: $OPENAI_CHECK)"
 else
     echo "✗ OPENAI_API_KEY is not set"
 fi
 
-if [ ! -z "$ANTHROPIC_API_KEY" ]; then
-    echo "✓ ANTHROPIC_API_KEY is currently set"
+ANTHROPIC_CHECK=$(check_key_exists "ANTHROPIC_API_KEY")
+if [ "$ANTHROPIC_CHECK" != "none" ]; then
+    echo "✓ ANTHROPIC_API_KEY is currently set (source: $ANTHROPIC_CHECK)"
 else
     echo "✗ ANTHROPIC_API_KEY is not set"
 fi
 
 # Check Jira credentials
-JIRA_CHECK=$(security find-generic-password -a "$USER" -s "JIRA_API_KEY" -w 2>/dev/null)
-if [ ! -z "$JIRA_CHECK" ] || [ ! -z "$JIRA_API_KEY" ]; then
-    echo "✓ JIRA_API_KEY is currently set"
+JIRA_CHECK=$(check_key_exists "JIRA_API_KEY")
+if [ "$JIRA_CHECK" != "none" ]; then
+    echo "✓ JIRA_API_KEY is currently set (source: $JIRA_CHECK)"
 else
     echo "✗ JIRA_API_KEY is not set"
 fi

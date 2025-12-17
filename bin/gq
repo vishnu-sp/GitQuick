@@ -293,7 +293,30 @@ EOF
     echo ""
     
     if [ -f "$script_dir/../lib/store-api-keys.sh" ]; then
-        bash "$script_dir/../lib/store-api-keys.sh"
+        local continue_setup=true
+        
+        while [ "$continue_setup" = true ]; do
+            # Call store-api-keys.sh - it will show status and menu
+            bash "$script_dir/../lib/store-api-keys.sh"
+            local store_result=$?
+            
+            # After store-api-keys.sh completes, ask if user wants to configure more
+            echo ""
+            echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+            echo ""
+            printf "Would you like to configure something else? (y/N): "
+            read continue_choice
+            continue_choice=$(echo "$continue_choice" | tr '[:upper:]' '[:lower:]' | xargs)
+            
+            if [[ "$continue_choice" != "y" ]] && [[ "$continue_choice" != "yes" ]]; then
+                continue_setup=false
+                echo ""
+                echo -e "${GREEN}✅ Setup complete!${NC}"
+                echo ""
+                echo -e "${BLUE}You can run ${GREEN}gq update${NC} anytime to reconfigure credentials${NC}"
+                echo ""
+            fi
+        done
     else
         echo -e "${RED}Error: store-api-keys.sh not found${NC}" >&2
         return 1
