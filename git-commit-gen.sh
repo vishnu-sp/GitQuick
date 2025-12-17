@@ -1936,20 +1936,41 @@ generate_with_openai() {
         diff_truncated="$DIFF"
     fi
     
-    local prompt="Analyze the following git diff and generate a conventional commit message following the format: type(scope): subject
+    local prompt="Analyze the following git diff and generate a meaningful, grammatically correct conventional commit message.
+
+CRITICAL REQUIREMENTS:
+1. Analyze the ACTUAL CODE CHANGES, not just file names
+2. Understand what functionality was added, fixed, or modified
+3. Write a grammatically correct, meaningful subject line
+4. Use proper English grammar and complete sentences
+5. Focus on WHAT changed and WHY it matters, not HOW it was implemented
+6. DO NOT just list file names - describe the actual changes
+
+Format: type(scope): subject
+
+Types to use:
+- feat: New feature or functionality
+- fix: Bug fix or error correction
+- docs: Documentation changes
+- style: Code style/formatting (no logic changes)
+- refactor: Code restructuring without changing behavior
+- perf: Performance improvements
+- test: Adding or updating tests
+- chore: Maintenance tasks, dependencies, config
+- ci: CI/CD changes
 
 Rules:
-- Use types: feat, fix, docs, style, refactor, perf, test, chore, ci
 - Keep subject under 72 characters
-- Be concise and descriptive
-- Focus on what changed, not how
+- Use imperative mood (e.g., 'add feature' not 'added feature')
+- Be specific and descriptive
+- Example: 'feat(auth): add password reset functionality' NOT 'update auth.ts'
 ${JIRA_CONTEXT}
 Git diff:
-\`\`\`
+\`\`\`diff
 $diff_truncated
 \`\`\`
 
-Generate only the commit message, nothing else:"
+Generate ONLY the commit message in the format 'type(scope): subject' - nothing else, no explanations:"
 
     # Escape prompt for JSON
     local prompt_json=$(echo "$prompt" | jq -Rs . 2>/dev/null)
@@ -1963,11 +1984,11 @@ Generate only the commit message, nothing else:"
         -d "{
             \"model\": \"$model\",
             \"messages\": [
-                {\"role\": \"system\", \"content\": \"You are a git commit message generator. Generate concise, conventional commit messages.\"},
+                {\"role\": \"system\", \"content\": \"You are an expert git commit message generator. Analyze code changes deeply and generate meaningful, grammatically correct commit messages. Focus on WHAT changed functionally, not just file names. Use proper English grammar.\"},
                 {\"role\": \"user\", \"content\": $prompt_json}
             ],
-            \"temperature\": 0.3,
-            \"max_tokens\": 100
+            \"temperature\": 0.2,
+            \"max_tokens\": 150
         }" 2>/dev/null)
     
     if [ $? -ne 0 ] || [ -z "$response" ]; then
@@ -2007,13 +2028,31 @@ generate_with_claude() {
         diff_truncated="$DIFF"
     fi
     
-    local prompt="Analyze this git diff and generate a conventional commit message (type(scope): subject format):
+    local prompt="Analyze this git diff and generate a meaningful, grammatically correct conventional commit message.
+
+CRITICAL REQUIREMENTS:
+1. Analyze the ACTUAL CODE CHANGES, not just file names
+2. Understand what functionality was added, fixed, or modified
+3. Write a grammatically correct, meaningful subject line
+4. Use proper English grammar and complete sentences
+5. Focus on WHAT changed and WHY it matters, not HOW it was implemented
+6. DO NOT just list file names - describe the actual changes
+
+Format: type(scope): subject
+
+Types: feat (new feature), fix (bug fix), docs (documentation), style (formatting), refactor (restructuring), perf (performance), test (tests), chore (maintenance), ci (CI/CD)
+
+Rules:
+- Keep subject under 72 characters
+- Use imperative mood (e.g., 'add feature' not 'added feature')
+- Be specific and descriptive
+- Example: 'feat(auth): add password reset functionality' NOT 'update auth.ts'
 ${JIRA_CONTEXT}
-\`\`\`
+\`\`\`diff
 $diff_truncated
 \`\`\`
 
-Generate only the commit message:"
+Generate ONLY the commit message in format 'type(scope): subject' - nothing else:"
 
     # Escape prompt for JSON
     local prompt_json=$(echo "$prompt" | jq -Rs . 2>/dev/null)
@@ -2027,7 +2066,7 @@ Generate only the commit message:"
         -H "anthropic-version: 2023-06-01" \
         -d "{
             \"model\": \"claude-3-5-sonnet-20241022\",
-            \"max_tokens\": 100,
+            \"max_tokens\": 150,
             \"messages\": [
                 {\"role\": \"user\", \"content\": $prompt_json}
             ]
@@ -2062,41 +2101,106 @@ generate_rule_based() {
     local scope=""
     local subject=""
     
-    # Determine commit type based on diff content
-    if echo "$diff_lower" | grep -qE "(add|new|create|implement|feature)"; then
+    # Analyze actual code changes, not just file names
+    local added_lines=$(echo "$DIFF" | grep -c "^\+" || echo "0")
+    local removed_lines=$(echo "$DIFF" | grep -c "^-" || echo "0")
+    
+    # Determine commit type based on diff content and patterns
+    if echo "$DIFF" | grep -qE "^\+.*(function|class|export|def|async|const.*=.*\(|interface|type)"; then
         commit_type="feat"
-    elif echo "$diff_lower" | grep -qE "(fix|bug|error|issue|problem|resolve)"; then
+        subject="add new functionality"
+    elif echo "$diff_lower" | grep -qE "(add|new|create|implement|feature|introduce)"; then
+        commit_type="feat"
+        # Try to extract what was added
+        if echo "$diff_lower" | grep -qE "(function|method|handler|service|controller)"; then
+            subject="add new functionality"
+        elif echo "$diff_lower" | grep -qE "(endpoint|route|api)"; then
+            subject="add new API endpoint"
+        elif echo "$diff_lower" | grep -qE "(validation|validator|check)"; then
+            subject="add validation logic"
+        elif echo "$diff_lower" | grep -qE "(config|configuration|setting)"; then
+            subject="add configuration option"
+        else
+            subject="add new feature"
+        fi
+    elif echo "$diff_lower" | grep -qE "(fix|bug|error|issue|problem|resolve|correct|repair)"; then
         commit_type="fix"
-    elif echo "$diff_lower" | grep -qE "(refactor|restructure|reorganize|clean)"; then
+        # Try to extract what was fixed
+        if echo "$diff_lower" | grep -qE "(null|undefined|exception|error|crash)"; then
+            subject="fix null reference error"
+        elif echo "$diff_lower" | grep -qE "(validation|validate|check)"; then
+            subject="fix validation logic"
+        elif echo "$diff_lower" | grep -qE "(typo|spelling|grammar)"; then
+            subject="fix typo"
+        elif echo "$diff_lower" | grep -qE "(timeout|time|delay)"; then
+            subject="fix timeout issue"
+        else
+            subject="fix bug"
+        fi
+    elif echo "$diff_lower" | grep -qE "(refactor|restructure|reorganize|clean|extract|simplify)"; then
         commit_type="refactor"
-    elif echo "$diff_lower" | grep -qE "(test|spec|specs)"; then
+        if echo "$diff_lower" | grep -qE "(extract|move|split)"; then
+            subject="refactor code structure"
+        elif echo "$diff_lower" | grep -qE "(rename|renaming)"; then
+            subject="refactor variable names"
+        else
+            subject="refactor code"
+        fi
+    elif echo "$diff_lower" | grep -qE "(test|spec|specs|it\(|describe\(|expect)"; then
         commit_type="test"
-    elif echo "$diff_lower" | grep -qE "(doc|readme|comment)"; then
+        if echo "$diff_lower" | grep -qE "(add|new|create)"; then
+            subject="add test cases"
+        else
+            subject="update tests"
+        fi
+    elif echo "$diff_lower" | grep -qE "(doc|readme|comment|\.md)"; then
         commit_type="docs"
-    elif echo "$diff_lower" | grep -qE "(style|format|indent|whitespace)"; then
+        subject="update documentation"
+    elif echo "$diff_lower" | grep -qE "(style|format|indent|whitespace|prettier|eslint)"; then
         commit_type="style"
-    elif echo "$diff_lower" | grep -qE "(perf|performance|optimize|speed)"; then
+        subject="format code style"
+    elif echo "$diff_lower" | grep -qE "(perf|performance|optimize|speed|fast|slow)"; then
         commit_type="perf"
-    fi
-    
-    # Try to extract scope from file paths
-    local files=$(git diff --cached --name-only | head -5)
-    if echo "$files" | grep -qE "api|endpoint|route"; then
-        scope="api"
-    elif echo "$files" | grep -qE "test|spec"; then
-        scope="test"
-    elif echo "$files" | grep -qE "docker|dockerfile"; then
-        scope="docker"
-    elif echo "$files" | grep -qE "\.env|config"; then
-        scope="config"
-    fi
-    
-    # Generate subject from file names and changes
-    local changed_files=$(git diff --cached --name-only | head -3 | xargs -I {} basename {} | tr '\n' ' ' | sed 's/ $//')
-    if [ ! -z "$changed_files" ]; then
-        subject="update $changed_files"
+        subject="improve performance"
+    elif echo "$diff_lower" | grep -qE "(dependenc|package\.json|yarn|npm|pip|requirements)"; then
+        commit_type="chore"
+        subject="update dependencies"
+    elif echo "$diff_lower" | grep -qE "(docker|dockerfile|\.dockerignore)"; then
+        commit_type="chore"
+        subject="update Docker configuration"
+    elif echo "$diff_lower" | grep -qE "(\.env|config|configuration|setting)"; then
+        commit_type="chore"
+        subject="update configuration"
     else
-        subject="update code"
+        # Default: analyze what changed
+        if [ "$added_lines" -gt "$removed_lines" ] && [ "$added_lines" -gt 10 ]; then
+            commit_type="feat"
+            subject="add new functionality"
+        elif [ "$removed_lines" -gt "$added_lines" ] && [ "$removed_lines" -gt 10 ]; then
+            commit_type="refactor"
+            subject="remove unused code"
+        else
+            commit_type="chore"
+            subject="update code"
+        fi
+    fi
+    
+    # Try to extract scope from file paths and content
+    local files=$(git diff --cached --name-only | head -5)
+    if echo "$files" | grep -qE "(api|endpoint|route|controller)"; then
+        scope="api"
+    elif echo "$files" | grep -qE "(auth|login|user|account)"; then
+        scope="auth"
+    elif echo "$files" | grep -qE "(test|spec|__tests__)"; then
+        scope="test"
+    elif echo "$files" | grep -qE "(docker|dockerfile)"; then
+        scope="docker"
+    elif echo "$files" | grep -qE "(\.env|config|configuration)"; then
+        scope="config"
+    elif echo "$files" | grep -qE "(ui|component|view|page)"; then
+        scope="ui"
+    elif echo "$files" | grep -qE "(service|service\.ts|service\.js)"; then
+        scope="service"
     fi
     
     # Format: type(scope): subject
@@ -2124,13 +2228,25 @@ generate_with_cursor_cli() {
     fi
     
     # Create prompt for cursor-agent
-    local prompt="Analyze this git diff and generate a conventional commit message following the format: type(scope): subject
+    local prompt="Analyze this git diff and generate a meaningful, grammatically correct conventional commit message.
+
+CRITICAL REQUIREMENTS:
+1. Analyze the ACTUAL CODE CHANGES, not just file names
+2. Understand what functionality was added, fixed, or modified
+3. Write a grammatically correct, meaningful subject line
+4. Use proper English grammar and complete sentences
+5. Focus on WHAT changed and WHY it matters, not HOW it was implemented
+6. DO NOT just list file names - describe the actual changes
+
+Format: type(scope): subject
+
+Types: feat (new feature), fix (bug fix), docs (documentation), style (formatting), refactor (restructuring), perf (performance), test (tests), chore (maintenance), ci (CI/CD)
 
 Rules:
-- Use types: feat, fix, docs, style, refactor, perf, test, chore, ci
 - Keep subject under 72 characters
-- Be concise and descriptive
-- Focus on what changed, not how
+- Use imperative mood (e.g., 'add feature' not 'added feature')
+- Be specific and descriptive
+- Example: 'feat(auth): add password reset functionality' NOT 'update auth.ts'
 - Return ONLY the commit message, nothing else
 ${JIRA_CONTEXT}
 Git diff:
@@ -2138,7 +2254,7 @@ Git diff:
 $diff_truncated
 \`\`\`
 
-Generate only the commit message:"
+Generate ONLY the commit message in format 'type(scope): subject':"
     
     # Check if CURSOR_API_KEY is set (from Keychain or environment)
     if [ ! -z "$CURSOR_API_KEY" ]; then
