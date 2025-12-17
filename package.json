@@ -1,6 +1,6 @@
 {
   "name": "git-jira-ai",
-  "version": "1.0.11",
+  "version": "1.0.12",
   "description": "AI-powered Git and Jira workflow automation with smart commits and ticket management",
   "preferGlobal": true,
   "bin": {
