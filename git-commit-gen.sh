@@ -705,20 +705,62 @@ generate_jira_comment_with_claude() {
 generate_jira_comment_with_cursor() {
     local prompt="$1"
     
-    if ! command -v cursor-agent &> /dev/null; then
+    # Find cursor-agent in common locations
+    local cursor_agent_path=""
+    if command -v cursor-agent &> /dev/null; then
+        cursor_agent_path="cursor-agent"
+    else
+        # Check common installation paths
+        local cursor_paths=(
+            "$HOME/.local/bin/cursor-agent"
+            "/usr/local/bin/cursor-agent"
+            "$HOME/.cursor/bin/cursor-agent"
+            "/opt/homebrew/bin/cursor-agent"
+        )
+        
+        for path in "${cursor_paths[@]}"; do
+            if [ -f "$path" ] && [ -x "$path" ]; then
+                cursor_agent_path="$path"
+                break
+            fi
+        done
+    fi
+    
+    if [ -z "$cursor_agent_path" ]; then
         return 1
     fi
     
-    # Check if CURSOR_API_KEY is set (from Keychain or environment)
-    if [ ! -z "$CURSOR_API_KEY" ]; then
-        local response=$(CURSOR_API_KEY="$CURSOR_API_KEY" cursor-agent -p "$prompt" 2>&1)
-    else
-        local response=$(cursor-agent -p "$prompt" 2>&1)
+    # Ensure CURSOR_API_KEY is loaded
+    if [ -z "$CURSOR_API_KEY" ]; then
+        CURSOR_API_KEY=$(security find-generic-password -a "$USER" -s "CURSOR_API_KEY" -w 2>/dev/null)
+        # Also try SOPS if available
+        if [ -z "$CURSOR_API_KEY" ] && [ -f "$HOME/Documents/secrets/api-keys.yaml" ] && command -v sops &> /dev/null; then
+            CURSOR_API_KEY=$(sops --decrypt --extract '["CURSOR_API_KEY"]' "$HOME/Documents/secrets/api-keys.yaml" 2>/dev/null)
+        fi
     fi
-    local exit_code=$?
+    
+    # Export CURSOR_API_KEY so it's available to the subprocess
+    if [ ! -z "$CURSOR_API_KEY" ]; then
+        export CURSOR_API_KEY
+    fi
+    
+    # Try cursor-agent - first without API key (in case authenticated via login), then with API key
+    local response=""
+    local exit_code=1
+    
+    # First, try without API key (might be authenticated via cursor-agent login)
+    # Use --print flag for non-interactive output, prompt as argument
+    response=$("$cursor_agent_path" --print "$prompt" 2>&1)
+    exit_code=$?
+    
+    # If that failed and we have an API key, try with the API key
+    if [ $exit_code -ne 0 ] && [ ! -z "$CURSOR_API_KEY" ]; then
+        response=$(CURSOR_API_KEY="$CURSOR_API_KEY" "$cursor_agent_path" --print "$prompt" 2>&1)
+        exit_code=$?
+    fi
     
     # Check for authentication error
-    if echo "$response" | grep -qi "authentication required\|login"; then
+    if echo "$response" | grep -qi "authentication required\|login\|unauthorized\|401\|403"; then
         return 1
     fi
     
@@ -960,33 +1002,34 @@ PROMPT_EOF
     fi
     
     # Try Cursor CLI (cursor-agent)
+    # Check if cursor-agent exists (either in PATH or common locations)
+    local cursor_agent_found=false
     if command -v cursor-agent &> /dev/null; then
-        echo -e "${BLUE}🎨 Generating Jira comment with Cursor AI...${NC}" >&2
-        comment=$(generate_jira_comment_with_cursor "$prompt")
-        if [ $? -eq 0 ] && [ ! -z "$comment" ]; then
-            echo "$comment"
-            return 0
-        fi
+        cursor_agent_found=true
     else
         # Check common installation paths
         local cursor_paths=(
             "$HOME/.local/bin/cursor-agent"
             "/usr/local/bin/cursor-agent"
             "$HOME/.cursor/bin/cursor-agent"
+            "/opt/homebrew/bin/cursor-agent"
         )
         
         for path in "${cursor_paths[@]}"; do
             if [ -f "$path" ] && [ -x "$path" ]; then
-                echo -e "${BLUE}🎨 Found cursor-agent at $path${NC}" >&2
-                export PATH="$(dirname "$path"):$PATH"
-                comment=$(generate_jira_comment_with_cursor "$prompt")
-                if [ $? -eq 0 ] && [ ! -z "$comment" ]; then
-                    echo "$comment"
-                    return 0
-                fi
+                cursor_agent_found=true
                 break
             fi
         done
+    fi
+    
+    if [ "$cursor_agent_found" = true ]; then
+        echo -e "${BLUE}🎨 Generating Jira comment with Cursor AI...${NC}" >&2
+        comment=$(generate_jira_comment_with_cursor "$prompt")
+        if [ $? -eq 0 ] && [ ! -z "$comment" ]; then
+            echo "$comment"
+            return 0
+        fi
     fi
     
     # Fallback to structured comment if AI fails (using markdown)
@@ -2213,16 +2256,50 @@ generate_rule_based() {
 
 # Generate with Cursor CLI (cursor-agent) - fully automated
 generate_with_cursor_cli() {
-    # Check if cursor-agent is available
-    if ! command -v cursor-agent &> /dev/null; then
+    # Find cursor-agent in common locations
+    local cursor_agent_path=""
+    if command -v cursor-agent &> /dev/null; then
+        cursor_agent_path="cursor-agent"
+    else
+        # Check common installation paths
+        local cursor_paths=(
+            "$HOME/.local/bin/cursor-agent"
+            "/usr/local/bin/cursor-agent"
+            "$HOME/.cursor/bin/cursor-agent"
+            "/opt/homebrew/bin/cursor-agent"
+        )
+        
+        for path in "${cursor_paths[@]}"; do
+            if [ -f "$path" ] && [ -x "$path" ]; then
+                cursor_agent_path="$path"
+                break
+            fi
+        done
+    fi
+    
+    if [ -z "$cursor_agent_path" ]; then
         return 1
+    fi
+    
+    # Ensure CURSOR_API_KEY is loaded (in case it wasn't loaded earlier)
+    if [ -z "$CURSOR_API_KEY" ]; then
+        CURSOR_API_KEY=$(security find-generic-password -a "$USER" -s "CURSOR_API_KEY" -w 2>/dev/null)
+        # Also try SOPS if available
+        if [ -z "$CURSOR_API_KEY" ] && [ -f "$HOME/Documents/secrets/api-keys.yaml" ] && command -v sops &> /dev/null; then
+            CURSOR_API_KEY=$(sops --decrypt --extract '["CURSOR_API_KEY"]' "$HOME/Documents/secrets/api-keys.yaml" 2>/dev/null)
+        fi
+    fi
+    
+    # Export CURSOR_API_KEY so it's available to the subprocess
+    if [ ! -z "$CURSOR_API_KEY" ]; then
+        export CURSOR_API_KEY
     fi
     
     local diff_truncated
     
-    # Truncate diff if too long (keep last 3000 chars for context)
-    if [ ${#DIFF} -gt 3000 ]; then
-        diff_truncated="${DIFF: -3000}"
+    # Truncate diff if too long (keep last 8000 chars for better context)
+    if [ ${#DIFF} -gt 8000 ]; then
+        diff_truncated="${DIFF: -8000}"
     else
         diff_truncated="$DIFF"
     fi
@@ -2256,40 +2333,75 @@ $diff_truncated
 
 Generate ONLY the commit message in format 'type(scope): subject':"
     
-    # Check if CURSOR_API_KEY is set (from Keychain or environment)
-    if [ ! -z "$CURSOR_API_KEY" ]; then
-        # Use cursor-agent with API key from environment
-        local response=$(CURSOR_API_KEY="$CURSOR_API_KEY" cursor-agent -p "$prompt" 2>&1)
-    else
-        # Try without API key (might be authenticated via login)
-        local response=$(cursor-agent -p "$prompt" 2>&1)
+    # Try cursor-agent - first without API key (in case authenticated via login), then with API key
+    local response=""
+    local exit_code=1
+    
+    # First, try without API key (might be authenticated via cursor-agent login)
+    # Use --print flag for non-interactive output, prompt as argument
+    response=$("$cursor_agent_path" --print "$prompt" 2>&1)
+    exit_code=$?
+    
+    # If that failed and we have an API key, try with the API key
+    if [ $exit_code -ne 0 ] && [ ! -z "$CURSOR_API_KEY" ]; then
+        response=$(CURSOR_API_KEY="$CURSOR_API_KEY" "$cursor_agent_path" --print "$prompt" 2>&1)
+        exit_code=$?
     fi
-    local exit_code=$?
     
     # Check for authentication error
-    if echo "$response" | grep -qi "authentication required\|login"; then
+    if echo "$response" | grep -qi "authentication required\|login\|unauthorized\|401\|403"; then
         echo -e "${YELLOW}⚠️  cursor-agent requires authentication${NC}" >&2
         echo -e "${YELLOW}Options:${NC}" >&2
         echo -e "  1. Run: cursor-agent login" >&2
-        echo -e "  2. Or add CURSOR_API_KEY to Keychain and reload shell" >&2
+        echo -e "  2. Or add CURSOR_API_KEY to Keychain:${NC}" >&2
+        echo -e "     security add-generic-password -a \"\$USER\" -s \"CURSOR_API_KEY\" -w \"your-api-key\"" >&2
         echo -e "  3. Or set: export CURSOR_API_KEY='your-key'" >&2
         return 1
     fi
     
     # Check for other errors
     if [ $exit_code -ne 0 ]; then
-        echo -e "${YELLOW}⚠️  cursor-agent error:${NC}" >&2
-        echo "$response" | head -3 | sed 's/^/  /' >&2
+        echo -e "${YELLOW}⚠️  cursor-agent error (exit code: $exit_code):${NC}" >&2
+        if [ ! -z "$response" ]; then
+            echo "$response" | head -5 | sed 's/^/  /' >&2
+        else
+            echo -e "  ${YELLOW}No error message returned${NC}" >&2
+        fi
         return 1
     fi
     
     # Check if we got a valid response
     if [ ! -z "$response" ] && [ ${#response} -gt 5 ]; then
-        # Clean up the response (remove markdown code blocks if present)
-        echo "$response" | sed 's/```[^`]*```//g' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | head -1
-        return 0
+        # Clean up the response
+        # Remove markdown code blocks
+        local cleaned=$(echo "$response" | sed 's/```[^`]*```//g')
+        # Extract the first line that looks like a commit message (contains type(scope): or type:)
+        local commit_msg=$(echo "$cleaned" | grep -E "^(feat|fix|docs|style|refactor|perf|test|chore|ci)(\([^)]+\))?:" | head -1)
+        
+        # If we found a commit message format, use it
+        if [ ! -z "$commit_msg" ]; then
+            echo "$commit_msg" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
+            return 0
+        fi
+        
+        # Otherwise, try to extract the first meaningful line (not empty, not just whitespace, not a heading)
+        cleaned=$(echo "$cleaned" | grep -v "^#" | grep -v "^$" | grep -v "^Conventional\|^If you\|^**If\|^Update\|^Generate" | head -1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        
+        if [ ! -z "$cleaned" ] && [ ${#cleaned} -gt 10 ] && [ ${#cleaned} -lt 100 ]; then
+            echo "$cleaned"
+            return 0
+        fi
+        
+        # Last resort: show what we got for debugging
+        echo -e "${YELLOW}⚠️  cursor-agent response doesn't match expected format:${NC}" >&2
+        echo "$response" | head -10 | sed 's/^/  /' >&2
     fi
     
+    echo -e "${YELLOW}⚠️  cursor-agent returned empty or invalid response${NC}" >&2
+    if [ ! -z "$response" ]; then
+        echo -e "${YELLOW}Raw response (first 20 lines):${NC}" >&2
+        echo "$response" | head -20 | sed 's/^/  /' >&2
+    fi
     return 1
 }
 
@@ -2318,7 +2430,28 @@ generate_commit_message() {
     fi
     
     # Try Cursor CLI (cursor-agent) - requires authentication
+    # Check if cursor-agent exists (either in PATH or common locations)
+    local cursor_agent_found=false
     if command -v cursor-agent &> /dev/null; then
+        cursor_agent_found=true
+    else
+        # Check common installation paths
+        local cursor_paths=(
+            "$HOME/.local/bin/cursor-agent"
+            "/usr/local/bin/cursor-agent"
+            "$HOME/.cursor/bin/cursor-agent"
+            "/opt/homebrew/bin/cursor-agent"
+        )
+        
+        for path in "${cursor_paths[@]}"; do
+            if [ -f "$path" ] && [ -x "$path" ]; then
+                cursor_agent_found=true
+                break
+            fi
+        done
+    fi
+    
+    if [ "$cursor_agent_found" = true ]; then
         echo -e "${BLUE}🎨 Generating commit message with Cursor AI...${NC}" >&2
         message=$(generate_with_cursor_cli)
         if [ $? -eq 0 ] && [ ! -z "$message" ]; then
@@ -2326,27 +2459,6 @@ generate_commit_message() {
             return 0
         fi
         # Error message already shown by generate_with_cursor_cli
-    else
-        # Check common installation paths
-        local cursor_paths=(
-            "$HOME/.local/bin/cursor-agent"
-            "/usr/local/bin/cursor-agent"
-            "$HOME/.cursor/bin/cursor-agent"
-        )
-        
-        for path in "${cursor_paths[@]}"; do
-            if [ -f "$path" ] && [ -x "$path" ]; then
-                echo -e "${BLUE}🎨 Found cursor-agent at $path${NC}" >&2
-                # Temporarily add to PATH
-                export PATH="$(dirname "$path"):$PATH"
-                message=$(generate_with_cursor_cli)
-                if [ $? -eq 0 ] && [ ! -z "$message" ]; then
-                    echo "$message"
-                    return 0
-                fi
-                break
-            fi
-        done
     fi
     
     # Fallback to rule-based
