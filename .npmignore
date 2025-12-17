@@ -1,0 +1,41 @@
+# Development files
+.github/
+.git/
+README.md
+*.md
+!README-NPM.md
+
+# Python files (not needed in NPM package)
+generate-jira-comment.py
+requirements.txt
+
+# Install scripts (not needed)
+install-cursor-cli.sh
+
+# Original source files (we use bin/ and lib/ instead)
+git-cli.sh
+git-commit-gen.sh
+jira-manager.sh
+git-helpers.sh
+store-api-keys.sh
+
+# Test files
+test/
+tests/
+*.test.sh
+*.spec.sh
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*

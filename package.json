@@ -1,0 +1,45 @@
+{
+  "name": "git-jira-ai",
+  "version": "1.0.0",
+  "description": "AI-powered git commit message generator with seamless Jira integration",
+  "main": "bin/gq",
+  "bin": {
+    "gq": "./bin/gq",
+    "git-jira-ai": "./bin/gq"
+  },
+  "scripts": {
+    "postinstall": "node scripts/postinstall.js"
+  },
+  "keywords": [
+    "git",
+    "jira",
+    "ai",
+    "commit",
+    "automation",
+    "claude",
+    "openai",
+    "workflow",
+    "conventional-commits",
+    "cli"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": ""
+  },
+  "bugs": {
+    "url": ""
+  },
+  "homepage": "",
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "files": [
+    "bin/",
+    "lib/",
+    "scripts/",
+    "LICENSE",
+    "README-NPM.md"
+  ]
+}
