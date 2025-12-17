@@ -124,7 +124,7 @@ store_api_key() {
     case "$os" in
         macos)
             if store_key_macos "$key_name" "$key_value"; then
-                echo "macOS Keychain"
+            echo "macOS Keychain"
                 return 0
             else
                 return 1
@@ -132,7 +132,7 @@ store_api_key() {
             ;;
         windows)
             if store_key_windows "$key_name" "$key_value"; then
-                echo "Windows Credential Manager"
+            echo "Windows Credential Manager"
                 return 0
             else
                 return 1
@@ -140,7 +140,7 @@ store_api_key() {
             ;;
         linux)
             if store_key_linux "$key_name" "$key_value"; then
-                echo "Linux Secret Service"
+            echo "Linux Secret Service"
                 return 0
             else
                 return 1

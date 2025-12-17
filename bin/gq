@@ -297,7 +297,7 @@ EOF
         
         while [ "$continue_setup" = true ]; do
             # Call store-api-keys.sh - it will show status and menu
-            bash "$script_dir/../lib/store-api-keys.sh"
+        bash "$script_dir/../lib/store-api-keys.sh"
             local store_result=$?
             
             # After store-api-keys.sh completes, ask if user wants to configure more
@@ -752,7 +752,7 @@ show_config() {
     if [ "$storage_method" != "None" ]; then
         echo "  Method: $storage_method"
     else
-        echo "  Method: macOS Keychain"
+    echo "  Method: macOS Keychain"
     fi
     echo ""
     

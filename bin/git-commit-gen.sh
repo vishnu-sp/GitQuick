@@ -1164,7 +1164,7 @@ IMPORTANT STYLE GUIDELINES:
 2. Be CASUAL and CONVERSATIONAL - use contractions, natural language, avoid formal structure
 3. Sound HUMAN - vary your sentence structure, use natural transitions
 4. Be BRIEF but informative - don't over-explain
-5. Use simple markdown (**, -, bullets) - NO fancy formatting
+5. Use plain text formatting - NO markdown or fancy formatting
 6. Include practical details that matter for testing
 7. DON'T use section headers like "Summary:", "Issue:", etc. - just write naturally
 8. Start with a brief statement like "Hey team, I've completed the [task name]" or "Done with [task]" or similar
@@ -1321,66 +1321,15 @@ See JIRA ticket for issue details.
     return 0
 }
 
-# Convert markdown-style text to ADF (Atlassian Document Format) with rich formatting
-# Helper function to parse markdown bold (**text**) and convert to ADF content array
-parse_markdown_to_adf_content() {
+# Convert plain text to ADF (Atlassian Document Format)
+# Simple helper function to convert text to ADF content array (no markdown parsing)
+parse_text_to_adf_content() {
     local text="$1"
-    local content='[]'
-    
-    # Use a temporary file to process the text with Python for reliable parsing
-    local temp_file=$(mktemp)
-    echo "$text" > "$temp_file"
-    
-    # Use Python to parse markdown bold and generate ADF JSON
-    local python_script=$(cat <<'PYTHON_EOF'
-import sys
-import json
-import re
-
-text = sys.stdin.read().strip()
-if not text:
-    print('[]')
-    sys.exit(0)
-
-# Split by ** markers
-parts = re.split(r'(\*\*)', text)
-content = []
-current_text = ""
-in_bold = False
-
-for part in parts:
-    if part == "**":
-        # Toggle bold state
-        if current_text:
-            if in_bold:
-                content.append({"type": "text", "text": current_text, "marks": [{"type": "strong"}]})
-            else:
-                content.append({"type": "text", "text": current_text})
-            current_text = ""
-        in_bold = not in_bold
-    else:
-        current_text += part
-
-# Add remaining text
-if current_text:
-    if in_bold:
-        content.append({"type": "text", "text": current_text, "marks": [{"type": "strong"}]})
-    else:
-        content.append({"type": "text", "text": current_text})
-
-print(json.dumps(content))
-PYTHON_EOF
-)
-    
-    content=$(python3 -c "$python_script" < "$temp_file" 2>/dev/null)
-    rm -f "$temp_file"
-    
-    # Fallback to plain text if Python fails
-    if [ -z "$content" ] || [ "$content" = "[]" ]; then
-        content=$(echo '[]' | "$JQ" --arg text "$text" '. += [{"type": "text", "text": $text}]')
-    fi
-    
-    echo "$content"
+    # Strip any markdown markers that might have been generated
+    local clean_text=$(echo "$text" | sed 's/\*\*//g')
+    # Convert to ADF text node
+    local escaped_text=$(echo "$clean_text" | "$JQ" -Rs .)
+    echo "[{\"type\": \"text\", \"text\": $escaped_text}]"
 }
 
 convert_to_adf() {
@@ -1419,7 +1368,7 @@ convert_to_adf() {
             fi
             
             local heading_text="${BASH_REMATCH[1]}"
-            local heading_content=$(parse_markdown_to_adf_content "$heading_text")
+            local heading_content=$(parse_text_to_adf_content "$heading_text")
             adf_content=$(echo "$adf_content" | "$JQ" \
                 --argjson content "$heading_content" \
                 '. += [{
@@ -1430,7 +1379,7 @@ convert_to_adf() {
         # Handle bullet list items (- item or * item)
         elif [[ "$line" =~ ^[[:space:]]*[-*][[:space:]](.+)$ ]]; then
             local item_text="${BASH_REMATCH[1]}"
-            local item_content=$(parse_markdown_to_adf_content "$item_text")
+            local item_content=$(parse_text_to_adf_content "$item_text")
             list_items=$(echo "$list_items" | "$JQ" \
                 --argjson content "$item_content" \
                 '. += [{
@@ -1453,16 +1402,15 @@ convert_to_adf() {
             fi
             
             local item_text="${BASH_REMATCH[1]}"
-            local item_content=$(parse_markdown_to_adf_content "$item_text")
+            local item_content=$(parse_text_to_adf_content "$item_text")
             # Add as a paragraph for now (ADF ordered lists are complex)
+            # Prepend bullet to content array
+            local merged_content=$(echo "$item_content" | "$JQ" '. = [{"type": "text", "text": "• "}] + .')
             adf_content=$(echo "$adf_content" | "$JQ" \
-                --argjson content "$item_content" \
+                --argjson content "$merged_content" \
                 '. += [{
                     "type": "paragraph",
-                    "content": [
-                        {"type": "text", "text": "• "},
-                        $content
-                    ]
+                    "content": $content
                 }]')
         # Regular paragraph
         else
@@ -1475,7 +1423,7 @@ convert_to_adf() {
                 in_list=false
             fi
             
-            local para_content=$(parse_markdown_to_adf_content "$line")
+            local para_content=$(parse_text_to_adf_content "$line")
             adf_content=$(echo "$adf_content" | "$JQ" \
                 --argjson content "$para_content" \
                 '. += [{
@@ -1522,12 +1470,41 @@ post_jira_comment() {
     echo -e "${BLUE}📝 Updating Jira ticket $ticket_id...${NC}" >&2
     
     # Convert comment to ADF format
-    local adf_body=$(convert_to_adf "$comment")
+    local adf_body=$(convert_to_adf "$comment" 2>&1)
+    local convert_status=$?
+    
+    # Validate ADF body
+    if [ $convert_status -ne 0 ] || [ -z "$adf_body" ]; then
+        echo -e "${RED}Error: Failed to convert comment to ADF format${NC}" >&2
+        echo -e "${YELLOW}Debug output: ${adf_body:0:500}${NC}" >&2
+        return 1
+    fi
+    
+    # Validate JSON structure
+    if ! echo "$adf_body" | "$JQ" empty 2>/dev/null; then
+        echo -e "${RED}Error: ADF conversion produced invalid JSON${NC}" >&2
+        echo -e "${YELLOW}Debug - ADF body (first 500 chars): ${adf_body:0:500}${NC}" >&2
+        return 1
+    fi
+    
+    # Check if ADF body has content
+    local content_count=$(echo "$adf_body" | "$JQ" '.content | length' 2>/dev/null || echo "0")
+    if [ "$content_count" -eq 0 ]; then
+        echo -e "${RED}Error: ADF body has no content${NC}" >&2
+        echo -e "${YELLOW}Debug - Full ADF body: $adf_body${NC}" >&2
+        return 1
+    fi
     
     # Prepare JSON payload
     local json_payload=$("$JQ" -n \
         --argjson body "$adf_body" \
-        '{body: $body}')
+        '{body: $body}' 2>&1)
+    
+    if [ $? -ne 0 ] || [ -z "$json_payload" ] || ! echo "$json_payload" | "$JQ" empty 2>/dev/null; then
+        echo -e "${RED}Error: Failed to create JSON payload${NC}" >&2
+        echo -e "${YELLOW}Debug - Payload error: $json_payload${NC}" >&2
+        return 1
+    fi
     
     # Post comment to Jira
     local response=$(curl -s -X POST \
