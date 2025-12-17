@@ -898,6 +898,7 @@ build_commit_url() {
 generate_jira_comment_with_openai() {
     local prompt="$1"
     local api_key="${OPENAI_API_KEY}"
+    local model="${OPENAI_MODEL:-gpt-4.1-mini}"
     
     if [ -z "$api_key" ]; then
         return 1
@@ -907,7 +908,7 @@ generate_jira_comment_with_openai() {
         -H "Content-Type: application/json" \
         -H "Authorization: Bearer $api_key" \
         -d "{
-            \"model\": \"gpt-4-turbo-preview\",
+            \"model\": \"$model\",
             \"messages\": [
                 {\"role\": \"system\", \"content\": \"You are a helpful senior developer writing informal updates to your team. Write naturally and conversationally, like you're explaining what you did to a colleague. Output ONLY the comment text itself - no meta-commentary or explanations about what you're writing.\"},
                 {\"role\": \"user\", \"content\": $(echo "$prompt" | "$JQ" -Rs .)}
@@ -1321,6 +1322,67 @@ See JIRA ticket for issue details.
 }
 
 # Convert markdown-style text to ADF (Atlassian Document Format) with rich formatting
+# Helper function to parse markdown bold (**text**) and convert to ADF content array
+parse_markdown_to_adf_content() {
+    local text="$1"
+    local content='[]'
+    
+    # Use a temporary file to process the text with Python for reliable parsing
+    local temp_file=$(mktemp)
+    echo "$text" > "$temp_file"
+    
+    # Use Python to parse markdown bold and generate ADF JSON
+    local python_script=$(cat <<'PYTHON_EOF'
+import sys
+import json
+import re
+
+text = sys.stdin.read().strip()
+if not text:
+    print('[]')
+    sys.exit(0)
+
+# Split by ** markers
+parts = re.split(r'(\*\*)', text)
+content = []
+current_text = ""
+in_bold = False
+
+for part in parts:
+    if part == "**":
+        # Toggle bold state
+        if current_text:
+            if in_bold:
+                content.append({"type": "text", "text": current_text, "marks": [{"type": "strong"}]})
+            else:
+                content.append({"type": "text", "text": current_text})
+            current_text = ""
+        in_bold = not in_bold
+    else:
+        current_text += part
+
+# Add remaining text
+if current_text:
+    if in_bold:
+        content.append({"type": "text", "text": current_text, "marks": [{"type": "strong"}]})
+    else:
+        content.append({"type": "text", "text": current_text})
+
+print(json.dumps(content))
+PYTHON_EOF
+)
+    
+    content=$(python3 -c "$python_script" < "$temp_file" 2>/dev/null)
+    rm -f "$temp_file"
+    
+    # Fallback to plain text if Python fails
+    if [ -z "$content" ] || [ "$content" = "[]" ]; then
+        content=$(echo '[]' | "$JQ" --arg text "$text" '. += [{"type": "text", "text": $text}]')
+    fi
+    
+    echo "$content"
+}
+
 convert_to_adf() {
     local text="$1"
     
@@ -1357,23 +1419,25 @@ convert_to_adf() {
             fi
             
             local heading_text="${BASH_REMATCH[1]}"
+            local heading_content=$(parse_markdown_to_adf_content "$heading_text")
             adf_content=$(echo "$adf_content" | "$JQ" \
-                --arg text "$heading_text" \
+                --argjson content "$heading_content" \
                 '. += [{
                     "type": "heading",
                     "attrs": {"level": 2},
-                    "content": [{"type": "text", "text": $text, "marks": [{"type": "strong"}]}]
+                    "content": $content
                 }]')
         # Handle bullet list items (- item or * item)
         elif [[ "$line" =~ ^[[:space:]]*[-*][[:space:]](.+)$ ]]; then
             local item_text="${BASH_REMATCH[1]}"
+            local item_content=$(parse_markdown_to_adf_content "$item_text")
             list_items=$(echo "$list_items" | "$JQ" \
-                --arg text "$item_text" \
+                --argjson content "$item_content" \
                 '. += [{
                     "type": "listItem",
                     "content": [{
                         "type": "paragraph",
-                        "content": [{"type": "text", "text": $text}]
+                        "content": $content
                     }]
                 }]')
             in_list=true
@@ -1389,14 +1453,15 @@ convert_to_adf() {
             fi
             
             local item_text="${BASH_REMATCH[1]}"
+            local item_content=$(parse_markdown_to_adf_content "$item_text")
             # Add as a paragraph for now (ADF ordered lists are complex)
             adf_content=$(echo "$adf_content" | "$JQ" \
-                --arg text "$item_text" \
+                --argjson content "$item_content" \
                 '. += [{
                     "type": "paragraph",
                     "content": [
                         {"type": "text", "text": "• "},
-                        {"type": "text", "text": $text}
+                        $content
                     ]
                 }]')
         # Regular paragraph
@@ -1410,11 +1475,12 @@ convert_to_adf() {
                 in_list=false
             fi
             
+            local para_content=$(parse_markdown_to_adf_content "$line")
             adf_content=$(echo "$adf_content" | "$JQ" \
-                --arg text "$line" \
+                --argjson content "$para_content" \
                 '. += [{
                     "type": "paragraph",
-                    "content": [{"type": "text", "text": $text}]
+                    "content": $content
                 }]')
         fi
     done <<< "$text"
@@ -2194,7 +2260,7 @@ fi
 # Method 1: Using OpenAI API (if API key is set)
 generate_with_openai() {
     local api_key="${OPENAI_API_KEY}"
-    local model="${OPENAI_MODEL:-gpt-4o-mini}"
+    local model="${OPENAI_MODEL:-gpt-4.1-mini}"
     
     if [ -z "$api_key" ]; then
         return 1
