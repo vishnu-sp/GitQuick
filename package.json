@@ -22,16 +22,16 @@
     "conventional-commits",
     "cli"
   ],
-  "author": "",
+  "author": "vishnu-sp",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": ""
+    "url": "https://github.com/vishnu-sp/GitQuick.git"
   },
   "bugs": {
-    "url": ""
+    "url": "https://github.com/vishnu-sp/GitQuick/issues"
   },
-  "homepage": "",
+  "homepage": "https://github.com/vishnu-sp/GitQuick#readme",
   "engines": {
     "node": ">=14.0.0"
   },
