@@ -334,12 +334,167 @@ update_gq() {
     fi
 }
 
+# Reset all configuration
+reset_gq() {
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${RED}⚠️  Reset Configuration${NC}"
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    echo -e "${YELLOW}This will remove ALL gq configuration:${NC}"
+    echo ""
+    echo "  • All API keys from macOS Keychain"
+    echo "  • .env.api-keys file"
+    echo "  • All Jira configuration files"
+    echo ""
+    echo -e "${RED}This action cannot be undone!${NC}"
+    echo ""
+    read -p "Are you sure you want to reset everything? (type 'yes' to confirm): " confirm
+    
+    if [ "$confirm" != "yes" ]; then
+        echo -e "${BLUE}Reset cancelled.${NC}"
+        return 0
+    fi
+    
+    echo ""
+    echo -e "${BLUE}🔄 Resetting configuration...${NC}"
+    echo ""
+    
+    local removed_count=0
+    
+    # Remove API keys from macOS Keychain
+    echo -e "${YELLOW}Removing API keys from macOS Keychain...${NC}"
+    local api_keys=("CURSOR_API_KEY" "OPENAI_API_KEY" "ANTHROPIC_API_KEY" "JIRA_API_KEY" "JIRA_EMAIL" "JIRA_BASE_URL")
+    for key in "${api_keys[@]}"; do
+        if security find-generic-password -a "$USER" -s "$key" &>/dev/null; then
+            security delete-generic-password -a "$USER" -s "$key" 2>/dev/null
+            if [ $? -eq 0 ]; then
+                echo -e "  ${GREEN}✓${NC} Removed $key from Keychain"
+                removed_count=$((removed_count + 1))
+            else
+                echo -e "  ${YELLOW}⚠${NC} Failed to remove $key from Keychain"
+            fi
+        fi
+    done
+    
+    # Remove .env.api-keys file
+    echo ""
+    echo -e "${YELLOW}Removing .env.api-keys file...${NC}"
+    if [ -f "$HOME/.env.api-keys" ]; then
+        rm -f "$HOME/.env.api-keys"
+        if [ $? -eq 0 ]; then
+            echo -e "  ${GREEN}✓${NC} Removed $HOME/.env.api-keys"
+            removed_count=$((removed_count + 1))
+        else
+            echo -e "  ${YELLOW}⚠${NC} Failed to remove $HOME/.env.api-keys"
+        fi
+    else
+        echo -e "  ${BLUE}ℹ${NC}  .env.api-keys file not found"
+    fi
+    
+    # Remove Jira configuration files
+    echo ""
+    echo -e "${YELLOW}Removing Jira configuration...${NC}"
+    local jira_config_dir="$HOME/.config/git-ai"
+    local jira_files=("jira-config" "jira-instances.json" "jira-custom-fields.json")
+    
+    for file in "${jira_files[@]}"; do
+        local file_path="$jira_config_dir/$file"
+        if [ -f "$file_path" ]; then
+            rm -f "$file_path"
+            if [ $? -eq 0 ]; then
+                echo -e "  ${GREEN}✓${NC} Removed $file_path"
+                removed_count=$((removed_count + 1))
+            else
+                echo -e "  ${YELLOW}⚠${NC} Failed to remove $file_path"
+            fi
+        fi
+    done
+    
+    # Remove config directory if empty
+    if [ -d "$jira_config_dir" ]; then
+        if [ -z "$(ls -A "$jira_config_dir" 2>/dev/null)" ]; then
+            rmdir "$jira_config_dir" 2>/dev/null
+            if [ $? -eq 0 ]; then
+                echo -e "  ${GREEN}✓${NC} Removed empty config directory"
+            fi
+        fi
+    fi
+    
+    # Ask about shell config removal
+    echo ""
+    echo -e "${YELLOW}Shell Configuration:${NC}"
+    local shell_config=""
+    if [ -n "$ZSH_VERSION" ]; then
+        shell_config="$HOME/.zshrc"
+    elif [ -n "$BASH_VERSION" ]; then
+        shell_config="$HOME/.bashrc"
+    fi
+    
+    if [ ! -z "$shell_config" ] && [ -f "$shell_config" ]; then
+        if grep -q "gq()" "$shell_config" 2>/dev/null; then
+            echo -e "  ${BLUE}ℹ${NC}  Found gq function in $shell_config"
+            read -p "Remove gq function from $shell_config? (y/N): " remove_shell
+            remove_shell=$(echo "$remove_shell" | tr '[:upper:]' '[:lower:]' | xargs)
+            
+            if [[ "$remove_shell" == "y" ]] || [[ "$remove_shell" == "yes" ]]; then
+                # Create backup
+                cp "$shell_config" "${shell_config}.backup.$(date +%Y%m%d_%H%M%S)"
+                
+                # Remove gq function block (from "# Git Quick" comment to "fi")
+                if [[ "$(uname)" == "Darwin" ]]; then
+                    # macOS sed
+                    sed -i '' '/# Git Quick (gq)/,/^fi$/d' "$shell_config"
+                else
+                    # Linux sed
+                    sed -i '/# Git Quick (gq)/,/^fi$/d' "$shell_config"
+                fi
+                
+                # Also remove any standalone gq() function definitions
+                if [[ "$(uname)" == "Darwin" ]]; then
+                    sed -i '' '/^gq()/,/^}$/d' "$shell_config"
+                else
+                    sed -i '/^gq()/,/^}$/d' "$shell_config"
+                fi
+                
+                echo -e "  ${GREEN}✓${NC} Removed gq function from $shell_config"
+                echo -e "  ${BLUE}ℹ${NC}  Backup created: ${shell_config}.backup.*"
+                echo -e "  ${YELLOW}⚠${NC}  Run ${GREEN}source $shell_config${NC} or restart your terminal"
+            else
+                echo -e "  ${BLUE}ℹ${NC}  Keeping gq function in $shell_config"
+            fi
+        else
+            echo -e "  ${BLUE}ℹ${NC}  No gq function found in $shell_config"
+        fi
+    fi
+    
+    echo ""
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    if [ $removed_count -gt 0 ]; then
+        echo -e "${GREEN}✅ Reset complete!${NC}"
+        echo -e "${GREEN}   Removed $removed_count item(s)${NC}"
+    else
+        echo -e "${BLUE}ℹ${NC}  No configuration found to reset"
+    fi
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    echo -e "${YELLOW}To reconfigure, run: ${GREEN}gq init${NC}"
+    echo ""
+}
+
 # Show current configuration
 show_config() {
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "${GREEN}Current Configuration${NC}"
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
+    
+    # Load .env.api-keys file if it exists (for config display)
+    if [ -f "$HOME/.env.api-keys" ]; then
+        # Temporarily source to check values (use set -a to export, then unset)
+        set -a
+        source "$HOME/.env.api-keys" 2>/dev/null
+        set +a
+    fi
     
     # Shell configuration
     local shell_config=""
@@ -358,17 +513,87 @@ show_config() {
     fi
     echo ""
     
-    # AI Provider
+    # AI Provider - Check all sources and find which provider has a valid key
     echo -e "${YELLOW}AI Provider:${NC}"
     local ai_provider="None"
-    if [ ! -z "$CURSOR_API_KEY" ] || security find-generic-password -a "$USER" -s "CURSOR_API_KEY" &>/dev/null; then
-        ai_provider="Cursor AI"
-    elif [ ! -z "$OPENAI_API_KEY" ] || security find-generic-password -a "$USER" -s "OPENAI_API_KEY" &>/dev/null; then
+    local storage_method="None"
+    
+    # Helper function to get key value from all sources
+    get_key_value() {
+        local key_name="$1"
+        local value=""
+        local source=""
+        
+        # Check keychain first (most secure)
+        value=$(security find-generic-password -a "$USER" -s "$key_name" -w 2>/dev/null)
+        if [ ! -z "$value" ] && [ ${#value} -gt 10 ]; then  # Check if value exists and is meaningful (API keys are usually > 10 chars)
+            echo "keychain|$value"
+            return 0
+        fi
+        
+        # Check .env.api-keys file (fallback storage)
+        if [ -f "$HOME/.env.api-keys" ]; then
+            value=$(grep "^${key_name}=" "$HOME/.env.api-keys" 2>/dev/null | cut -d'=' -f2- | sed "s/^['\"]//;s/['\"]$//")
+            if [ ! -z "$value" ] && [ ${#value} -gt 10 ]; then
+                echo "envfile|$value"
+                return 0
+            fi
+        fi
+        
+        # Check environment variable (lowest priority, might be from old config)
+        value="${!key_name}"
+        if [ ! -z "$value" ] && [ ${#value} -gt 10 ]; then
+            echo "envvar|$value"
+            return 0
+        fi
+        
+        echo "none|"
+        return 1
+    }
+    
+    # Check each provider and find the one with a valid key
+    # Priority: .env file > keychain > environment (to prefer newly configured keys)
+    local openai_result=$(get_key_value "OPENAI_API_KEY")
+    local cursor_result=$(get_key_value "CURSOR_API_KEY")
+    local anthropic_result=$(get_key_value "ANTHROPIC_API_KEY")
+    
+    # Extract source and value
+    local openai_source=$(echo "$openai_result" | cut -d'|' -f1)
+    local cursor_source=$(echo "$cursor_result" | cut -d'|' -f1)
+    local anthropic_source=$(echo "$anthropic_result" | cut -d'|' -f1)
+    
+    # Prioritize: envfile > keychain > envvar, and OpenAI > Cursor > Anthropic
+    if [ "$openai_source" != "none" ]; then
         ai_provider="OpenAI"
-    elif [ ! -z "$ANTHROPIC_API_KEY" ] || security find-generic-password -a "$USER" -s "ANTHROPIC_API_KEY" &>/dev/null; then
+        storage_method="$openai_source"
+    elif [ "$cursor_source" != "none" ]; then
+        ai_provider="Cursor AI"
+        storage_method="$cursor_source"
+    elif [ "$anthropic_source" != "none" ]; then
         ai_provider="Anthropic (Claude)"
+        storage_method="$anthropic_source"
     fi
+    
+    # Map storage method to display name
+    case "$storage_method" in
+        keychain)
+            storage_method="macOS Keychain"
+            ;;
+        envfile)
+            storage_method="Environment file"
+            ;;
+        envvar)
+            storage_method="Environment variable"
+            ;;
+        *)
+            storage_method="None"
+            ;;
+    esac
+    
     echo "  Provider: $ai_provider"
+    if [ "$storage_method" != "None" ]; then
+        echo "  Storage: $storage_method"
+    fi
     echo ""
     
     # Jira Configuration
@@ -398,7 +623,11 @@ show_config() {
     
     # Credential Storage
     echo -e "${YELLOW}Credential Storage:${NC}"
-    echo "  Method: macOS Keychain"
+    if [ "$storage_method" != "None" ]; then
+        echo "  Method: $storage_method"
+    else
+        echo "  Method: macOS Keychain"
+    fi
     echo ""
     
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -422,6 +651,12 @@ show_help() {
     echo -e "  ${YELLOW}gq commit${NC}              ${BLUE}→${NC} Commit with AI-generated message"
     echo -e "  ${YELLOW}gq cp${NC}                  ${BLUE}→${NC} Commit & push with Jira update"
     echo -e "  ${YELLOW}gq branch DH-1234${NC}      ${BLUE}→${NC} Create branch from ticket"
+    echo ""
+    echo -e "${GREEN}  ⚙️  Configuration${NC}"
+    echo ""
+    echo -e "  ${YELLOW}gq config${NC}               ${BLUE}→${NC} Show current configuration"
+    echo -e "  ${YELLOW}gq update${NC}               ${BLUE}→${NC} Update API keys and credentials"
+    echo -e "  ${YELLOW}gq reset${NC}               ${BLUE}→${NC} Reset all configuration (removes everything)"
     echo ""
     echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "${GREEN}  💡 Need Help?${NC}"
@@ -812,9 +1047,9 @@ git_cli_main() {
     
     # Check for ticket ID in arguments (pattern: PROJECT-123)
     # Also check for --will-push flag
-    # BUT: Skip this for branch/jira/config/init/update commands (they handle their own parsing)
+    # BUT: Skip this for branch/jira/config/init/update/reset commands (they handle their own parsing)
     local will_push=false
-    if [[ "$command" != "branch" ]] && [[ "$command" != "br" ]] && [[ "$command" != "jira" ]] && [[ "$command" != "config" ]] && [[ "$command" != "init" ]] && [[ "$command" != "update" ]] && [[ "$command" != "help" ]] && [[ "$command" != "--help" ]] && [[ "$command" != "-h" ]]; then
+    if [[ "$command" != "branch" ]] && [[ "$command" != "br" ]] && [[ "$command" != "jira" ]] && [[ "$command" != "config" ]] && [[ "$command" != "init" ]] && [[ "$command" != "update" ]] && [[ "$command" != "reset" ]] && [[ "$command" != "help" ]] && [[ "$command" != "--help" ]] && [[ "$command" != "-h" ]]; then
         for arg in "$@"; do
             if [[ "$arg" == "--will-push" ]]; then
                 will_push=true
@@ -1235,6 +1470,10 @@ git_cli_main() {
         config)
             # Show current configuration
             show_config
+            ;;
+        reset)
+            # Reset all configuration
+            reset_gq
             ;;
         jira)
             # Jira commands - delegate to jira-manager.sh

@@ -30,12 +30,20 @@ detect_os() {
 store_key_macos() {
     local key_name="$1"
     local key_value="$2"
+    
+    # Delete existing key if it exists (to avoid conflicts)
+    security delete-generic-password -a "$USER" -s "$key_name" 2>/dev/null
+    
+    # Add the new key
     security add-generic-password \
         -a "$USER" \
         -s "$key_name" \
         -w "$key_value" \
         -U \
         -T /usr/bin/security 2>/dev/null
+    
+    # Return the exit code
+    return $?
 }
 
 # Store API key in Windows Credential Manager
@@ -100,6 +108,9 @@ store_key_linux() {
     
     if command -v secret-tool &> /dev/null; then
         echo "$key_value" | secret-tool store --label="git-jira-ai ${key_name}" api-key "$key_name" value "$key_value" 2>/dev/null
+        return $?
+    else
+        return 1
     fi
 }
 
@@ -108,19 +119,32 @@ store_api_key() {
     local key_name="$1"
     local key_value="$2"
     local os=$(detect_os)
+    local result=0
     
     case "$os" in
         macos)
-            store_key_macos "$key_name" "$key_value"
-            echo "macOS Keychain"
+            if store_key_macos "$key_name" "$key_value"; then
+                echo "macOS Keychain"
+                return 0
+            else
+                return 1
+            fi
             ;;
         windows)
-            store_key_windows "$key_name" "$key_value"
-            echo "Windows Credential Manager"
+            if store_key_windows "$key_name" "$key_value"; then
+                echo "Windows Credential Manager"
+                return 0
+            else
+                return 1
+            fi
             ;;
         linux)
-            store_key_linux "$key_name" "$key_value"
-            echo "Linux Secret Service"
+            if store_key_linux "$key_name" "$key_value"; then
+                echo "Linux Secret Service"
+                return 0
+            else
+                return 1
+            fi
             ;;
         *)
             return 1
@@ -208,8 +232,8 @@ case "$choice" in
         # Store AI Provider API Key
         select_ai_provider
         
-        local os=$(detect_os)
-        local storage_name=""
+        os=$(detect_os)
+        storage_name=""
         
         case "$os" in
             macos)
@@ -233,9 +257,11 @@ case "$choice" in
         read -p "Enter ${API_KEY_NAME}: " api_key
         
         if [ ! -z "$api_key" ]; then
-            local storage_type=$(store_api_key "$API_KEY_NAME" "$api_key")
+            # Store the key and capture both output and exit code
+            storage_type=$(store_api_key "$API_KEY_NAME" "$api_key" 2>&1)
+            storage_result=$?
             
-            if [ $? -eq 0 ]; then
+            if [ $storage_result -eq 0 ] && [ ! -z "$storage_type" ]; then
                 echo ""
                 echo "✅ Stored in $storage_type!"
                 echo ""
@@ -306,8 +332,8 @@ case "$choice" in
         jira_base_url="${jira_base_url%/}"
         
         if [ ! -z "$jira_email" ] && [ ! -z "$jira_api_key" ] && [ ! -z "$jira_base_url" ]; then
-            local os=$(detect_os)
-            local storage_name=""
+            os=$(detect_os)
+            storage_name=""
             
             case "$os" in
                 macos)
@@ -330,11 +356,12 @@ case "$choice" in
             echo ""
             
             # Store credentials using OS-specific method
-            local storage_type=$(store_api_key "JIRA_API_KEY" "$jira_api_key")
-            store_api_key "JIRA_EMAIL" "$jira_email" >/dev/null
-            store_api_key "JIRA_BASE_URL" "$jira_base_url" >/dev/null
+            storage_type=$(store_api_key "JIRA_API_KEY" "$jira_api_key" 2>&1)
+            jira_storage_result=$?
+            store_api_key "JIRA_EMAIL" "$jira_email" >/dev/null 2>&1
+            store_api_key "JIRA_BASE_URL" "$jira_base_url" >/dev/null 2>&1
             
-            if [ $? -eq 0 ]; then
+            if [ $jira_storage_result -eq 0 ] && [ ! -z "$storage_type" ]; then
                 echo ""
                 echo "✅ Jira credentials stored in $storage_type!"
                 echo ""
