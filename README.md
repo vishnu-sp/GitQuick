@@ -45,7 +45,7 @@ This will guide you through:
 # Commit with AI
 gq commit
 
-# Commit and push with Jira update
+# Commit and push with Jira update (⭐ Most Recommended - Fully Interactive)
 gq cp
 
 # Create branch from ticket
@@ -58,8 +58,8 @@ gq branch DH-1234
 
 ```bash
 gq                    # Show help (default)
+gq cp [TICKET]        # ⭐ Commit, push & update Jira (Most Recommended - Fully Interactive)
 gq commit [TICKET]    # Commit with AI (optional ticket ID)
-gq cp [TICKET]        # Commit, push & update Jira
 gq push               # Push current branch
 gq pull               # Pull latest changes
 gq pr [base]          # Create pull request
@@ -108,8 +108,11 @@ gq branch DH-1234
 # Make your changes...
 git add .
 
-# Commit, push, and update Jira in one command
-gq cp DH-1234
+# ⭐ Commit, push, and update Jira in one command (Fully Interactive)
+# This is the most recommended command as it provides full interactive workflow
+gq cp
+# or with ticket ID
+gq cp [TicketID]
 ```
 
 ### Browse Tickets

@@ -1326,9 +1326,20 @@ See JIRA ticket for issue details.
 parse_text_to_adf_content() {
     local text="$1"
     # Strip any markdown markers that might have been generated
-    local clean_text=$(echo "$text" | sed 's/\*\*//g')
+    # Use parameter expansion and tr to remove * characters (more reliable than sed with special chars)
+    local clean_text="$text"
+    # Remove ** markers first (double asterisks)
+    clean_text="${clean_text//\*\*/}"
+    # Remove any remaining single * markers
+    clean_text="${clean_text//\*/}"
+    # Remove markdown links [text](url) -> text (using sed for regex)
+    clean_text=$(echo "$clean_text" | sed 's/\[\([^]]*\)\]([^)]*)/\1/g')
     # Convert to ADF text node
     local escaped_text=$(echo "$clean_text" | "$JQ" -Rs .)
+    if [ -z "$escaped_text" ] || [ "$escaped_text" = "null" ]; then
+        # Fallback: manually escape
+        escaped_text="\"$clean_text\""
+    fi
     echo "[{\"type\": \"text\", \"text\": $escaped_text}]"
 }
 
