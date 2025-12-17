@@ -1,8 +1,8 @@
 # Development files
 .github/
 .git/
-README.md
 *.md
+!README.md
 !README-NPM.md
 
 # Python files (not needed in NPM package)
