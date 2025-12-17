@@ -431,39 +431,98 @@ reset_gq() {
     fi
     
     if [ ! -z "$shell_config" ] && [ -f "$shell_config" ]; then
+        local found_gq=false
+        local found_api_keys=false
+        
+        # Check for gq function
         if grep -q "gq()" "$shell_config" 2>/dev/null; then
-            echo -e "  ${BLUE}ℹ${NC}  Found gq function in $shell_config"
-            read -p "Remove gq function from $shell_config? (y/N): " remove_shell
+            found_gq=true
+        fi
+        
+        # Check for API key loading code
+        if grep -qE "(CURSOR_API_KEY|OPENAI_API_KEY|ANTHROPIC_API_KEY|JIRA_API_KEY|JIRA_EMAIL|JIRA_BASE_URL).*security find-generic-password" "$shell_config" 2>/dev/null; then
+            found_api_keys=true
+        fi
+        
+        if [ "$found_gq" = true ] || [ "$found_api_keys" = true ]; then
+            echo -e "  ${BLUE}ℹ${NC}  Found configuration in $shell_config"
+            if [ "$found_gq" = true ]; then
+                echo -e "    • gq function"
+            fi
+            if [ "$found_api_keys" = true ]; then
+                echo -e "    • API key loading code"
+            fi
+            echo ""
+            read -p "Remove gq configuration from $shell_config? (y/N): " remove_shell
             remove_shell=$(echo "$remove_shell" | tr '[:upper:]' '[:lower:]' | xargs)
             
             if [[ "$remove_shell" == "y" ]] || [[ "$remove_shell" == "yes" ]]; then
                 # Create backup
                 cp "$shell_config" "${shell_config}.backup.$(date +%Y%m%d_%H%M%S)"
+                echo -e "  ${GREEN}✓${NC} Backup created: ${shell_config}.backup.*"
                 
                 # Remove gq function block (from "# Git Quick" comment to "fi")
-                if [[ "$(uname)" == "Darwin" ]]; then
-                    # macOS sed
-                    sed -i '' '/# Git Quick (gq)/,/^fi$/d' "$shell_config"
-                else
-                    # Linux sed
-                    sed -i '/# Git Quick (gq)/,/^fi$/d' "$shell_config"
+                if [ "$found_gq" = true ]; then
+                    if [[ "$(uname)" == "Darwin" ]]; then
+                        # macOS sed
+                        sed -i '' '/# Git Quick (gq)/,/^fi$/d' "$shell_config"
+                    else
+                        # Linux sed
+                        sed -i '/# Git Quick (gq)/,/^fi$/d' "$shell_config"
+                    fi
+                    
+                    # Also remove any standalone gq() function definitions
+                    if [[ "$(uname)" == "Darwin" ]]; then
+                        sed -i '' '/^gq()/,/^}$/d' "$shell_config"
+                    else
+                        sed -i '/^gq()/,/^}$/d' "$shell_config"
+                    fi
+                    echo -e "  ${GREEN}✓${NC} Removed gq function"
                 fi
                 
-                # Also remove any standalone gq() function definitions
-                if [[ "$(uname)" == "Darwin" ]]; then
-                    sed -i '' '/^gq()/,/^}$/d' "$shell_config"
-                else
-                    sed -i '/^gq()/,/^}$/d' "$shell_config"
+                # Remove API key loading blocks
+                if [ "$found_api_keys" = true ]; then
+                    # Remove blocks that load API keys from Keychain
+                    # Pattern: if security find-generic-password ... CURSOR_API_KEY ... then ... export CURSOR_API_KEY=... fi
+                    local api_keys=("CURSOR_API_KEY" "OPENAI_API_KEY" "ANTHROPIC_API_KEY" "JIRA_API_KEY" "JIRA_EMAIL" "JIRA_BASE_URL")
+                    for key in "${api_keys[@]}"; do
+                        # Remove multi-line blocks (if ... then ... export ... fi)
+                        if [[ "$(uname)" == "Darwin" ]]; then
+                            # macOS sed - remove blocks spanning multiple lines
+                            # First, try to remove complete if-then-fi blocks
+                            sed -i '' "/security find-generic-password.*-s \"${key}\"/,/^fi$/d" "$shell_config"
+                            # Also remove single-line exports
+                            sed -i '' "/export ${key}=/d" "$shell_config"
+                        else
+                            # Linux sed
+                            sed -i "/security find-generic-password.*-s \"${key}\"/,/^fi$/d" "$shell_config"
+                            sed -i "/export ${key}=/d" "$shell_config"
+                        fi
+                    done
+                    
+                    # Remove comment blocks about API keys
+                    if [[ "$(uname)" == "Darwin" ]]; then
+                        sed -i '' '/# Load API keys from macOS Keychain/d' "$shell_config"
+                        sed -i '' '/# Load API keys from SOPS encrypted file/d' "$shell_config"
+                    else
+                        sed -i '/# Load API keys from macOS Keychain/d' "$shell_config"
+                        sed -i '/# Load API keys from SOPS encrypted file/d' "$shell_config"
+                    fi
+                    
+                    echo -e "  ${GREEN}✓${NC} Removed API key loading code"
                 fi
                 
-                echo -e "  ${GREEN}✓${NC} Removed gq function from $shell_config"
-                echo -e "  ${BLUE}ℹ${NC}  Backup created: ${shell_config}.backup.*"
-                echo -e "  ${YELLOW}⚠${NC}  Run ${GREEN}source $shell_config${NC} or restart your terminal"
+                echo ""
+                echo -e "  ${YELLOW}⚠${NC}  Important: Restart your terminal or run:"
+                echo -e "     ${GREEN}unset CURSOR_API_KEY OPENAI_API_KEY ANTHROPIC_API_KEY JIRA_API_KEY JIRA_EMAIL JIRA_BASE_URL${NC}"
+                echo -e "     ${GREEN}source $shell_config${NC}"
             else
-                echo -e "  ${BLUE}ℹ${NC}  Keeping gq function in $shell_config"
+                echo -e "  ${BLUE}ℹ${NC}  Keeping configuration in $shell_config"
+                echo -e "  ${YELLOW}⚠${NC}  Note: Environment variables are still set in this session"
+                echo -e "     Run: ${GREEN}unset CURSOR_API_KEY OPENAI_API_KEY ANTHROPIC_API_KEY JIRA_API_KEY JIRA_EMAIL JIRA_BASE_URL${NC}"
             fi
         else
-            echo -e "  ${BLUE}ℹ${NC}  No gq function found in $shell_config"
+            echo -e "  ${BLUE}ℹ${NC}  No gq configuration found in $shell_config"
         fi
     fi
     
@@ -477,6 +536,21 @@ reset_gq() {
     fi
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
+    
+    # Check if environment variables are still set
+    local env_vars_set=false
+    if [ ! -z "$CURSOR_API_KEY" ] || [ ! -z "$OPENAI_API_KEY" ] || [ ! -z "$ANTHROPIC_API_KEY" ] || [ ! -z "$JIRA_API_KEY" ]; then
+        env_vars_set=true
+    fi
+    
+    if [ "$env_vars_set" = true ]; then
+        echo -e "${YELLOW}⚠️  Note: Environment variables are still set in this terminal session${NC}"
+        echo -e "${YELLOW}   To clear them, run:${NC}"
+        echo -e "${GREEN}   unset CURSOR_API_KEY OPENAI_API_KEY ANTHROPIC_API_KEY JIRA_API_KEY JIRA_EMAIL JIRA_BASE_URL${NC}"
+        echo -e "${YELLOW}   Or simply restart your terminal${NC}"
+        echo ""
+    fi
+    
     echo -e "${YELLOW}To reconfigure, run: ${GREEN}gq init${NC}"
     echo ""
 }
@@ -541,7 +615,32 @@ show_config() {
         fi
         
         # Check environment variable (lowest priority, might be from old config)
-        value="${!key_name}"
+        # Use eval for portable indirect variable expansion (works in both bash and zsh)
+        case "$key_name" in
+            CURSOR_API_KEY)
+                value="$CURSOR_API_KEY"
+                ;;
+            OPENAI_API_KEY)
+                value="$OPENAI_API_KEY"
+                ;;
+            ANTHROPIC_API_KEY)
+                value="$ANTHROPIC_API_KEY"
+                ;;
+            JIRA_API_KEY)
+                value="$JIRA_API_KEY"
+                ;;
+            JIRA_EMAIL)
+                value="$JIRA_EMAIL"
+                ;;
+            JIRA_BASE_URL)
+                value="$JIRA_BASE_URL"
+                ;;
+            *)
+                # Fallback to eval for other keys (less safe but works)
+                value=$(eval "echo \$$key_name" 2>/dev/null)
+                ;;
+        esac
+        
         if [ ! -z "$value" ] && [ ${#value} -gt 10 ]; then
             echo "envvar|$value"
             return 0
